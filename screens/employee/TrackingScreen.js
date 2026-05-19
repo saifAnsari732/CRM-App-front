@@ -94,7 +94,6 @@ export default function ActiveShiftMapScreen() {
     if (isTracking) {
       const fetchLiveCoords = async () => {
         try {
-          const { status } = await Location.getLastKnownPositionAsync({});
           const position = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           });
