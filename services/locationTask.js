@@ -68,7 +68,16 @@ TaskManager.defineTask(BACKGROUND_TRACKING_TASK, async ({ data: { locations }, e
         }
       }
       
-      console.log(`📍 BackgroundTask: Employee moved! Captured [${latitude}, ${longitude}] | Acc: ${accuracy}m | Speed: ${speed}m/s`);
+      let addressStr = '';
+      try {
+        const geocoded = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (geocoded && geocoded.length > 0) {
+          const res = geocoded[0];
+          addressStr = [res.street || res.name, res.district || res.subregion, res.city, res.region].filter(Boolean).join(', ');
+        }
+      } catch {}
+      
+      console.log(`📍 BackgroundTask: Employee moved! Captured [${latitude}, ${longitude}] | Address: ${addressStr || 'N/A'} | Acc: ${accuracy}m | Speed: ${speed}m/s`);
       
       const newCoord = {
         lat: latitude,

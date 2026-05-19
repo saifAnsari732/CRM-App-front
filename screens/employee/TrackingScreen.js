@@ -154,8 +154,10 @@ export default function ActiveShiftMapScreen() {
                   .filter(part => part && part.length > 0)
                   .join(', ');
                   
+                console.log('📡 Mobile Tracker: [Current Address] ->', fullAddress || `[${lat.toFixed(6)}, ${lng.toFixed(6)}]`);
                 setAddress(fullAddress || `Location acquired: [${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
               } else {
+                console.log('📡 Mobile Tracker: [Coordinates Acquired] ->', lat, lng);
                 setAddress(`Location acquired: [${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
               }
             } catch (geoErr) {
