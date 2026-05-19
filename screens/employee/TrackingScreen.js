@@ -154,7 +154,9 @@ export default function ActiveShiftMapScreen() {
                   .filter(part => part && part.length > 0)
                   .join(', ');
                   
-                setAddress(fullAddress || 'Location found, but address could not be resolved.');
+                setAddress(fullAddress || `Location acquired: [${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
+              } else {
+                setAddress(`Location acquired: [${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
               }
             } catch (geoErr) {
               console.log('📍 Tracking Screen: Reverse geocoding failed:', geoErr.message);
