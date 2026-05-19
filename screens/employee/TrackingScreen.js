@@ -119,19 +119,19 @@ export default function ActiveShiftMapScreen() {
               );
               
               // Robust GPS Drift Filter:
-              // If speed is explicitly positive (>0.3 m/s), use high precision 15m threshold.
-              // If speed is not registered or zero (e.g., stationary Wi-Fi/cellular drift),
-              // require at least a 35-meter jump to completely filter out phantom distance.
-              const isMovingExplicitly = mps && mps > 0.3;
-              const requiredThreshold = isMovingExplicitly ? 0.015 : 0.035;
+              // 1. If speed is supported and explicitly low (< 0.5 m/s or < 1.8 km/h), they are stationary.
+              // 2. If speed is not supported (web/browser), require a significant jump (> 45m).
+              const speedVal = mps !== null && mps !== undefined ? mps : 0;
+              const hasExplicitSpeed = mps !== null && mps !== undefined;
+              const isMoving = hasExplicitSpeed ? speedVal >= 0.5 : d >= 0.045;
               
-              if (d >= requiredThreshold) {
+              if (isMoving && d >= 0.015) {
                 totalDistanceRef.current += d;
                 setDistance(totalDistanceRef.current.toFixed(2));
                 lastCoordRef.current = { lat, lng };
                 setSpeed(displaySpeed);
               } else {
-                // If stationary, keep speed display at 0
+                // Keep speed display at 0 if stationary
                 setSpeed('0');
               }
             } else {
