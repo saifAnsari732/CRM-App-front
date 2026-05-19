@@ -9,7 +9,7 @@ class OfflineQueue {
   healthInterval = null;
 
   /**
-   * Add a request to the offline queuefghfyjgkgu
+   * Add a request to the offline queue
    */
   async enqueue(endpoint, method, data) {
     try {
