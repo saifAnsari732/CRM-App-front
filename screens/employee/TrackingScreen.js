@@ -118,16 +118,20 @@ export default function ActiveShiftMapScreen() {
                 lng
               );
               
-              // Anchor-based filter: 0.08km (80m) for low-accuracy/indoor drift, 0.015km (15m) for high precision
-              const requiredThreshold = acc > 15 ? 0.08 : 0.015;
+              // Robust GPS Drift Filter:
+              // If speed is explicitly positive (>0.3 m/s), use high precision 15m threshold.
+              // If speed is not registered or zero (e.g., stationary Wi-Fi/cellular drift),
+              // require at least a 35-meter jump to completely filter out phantom distance.
+              const isMovingExplicitly = mps && mps > 0.3;
+              const requiredThreshold = isMovingExplicitly ? 0.015 : 0.035;
               
-              if (d >= requiredThreshold && (!mps || mps > 0.3)) {
+              if (d >= requiredThreshold) {
                 totalDistanceRef.current += d;
                 setDistance(totalDistanceRef.current.toFixed(2));
                 lastCoordRef.current = { lat, lng };
                 setSpeed(displaySpeed);
               } else {
-                // If stationary (within anchor zone), force speed display to 0 km/h to prevent phantom speed spikes!
+                // If stationary, keep speed display at 0
                 setSpeed('0');
               }
             } else {
