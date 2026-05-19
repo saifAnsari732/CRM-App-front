@@ -9,7 +9,7 @@ import {
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
-import { taskApi, expenseApi, uploadAPI, authAPI } from '../../services/api';
+import { taskApi, expenseApi, uploadAPI, authAPI, getAvatarUrl } from '../../services/api';
 import * as ImagePicker from 'expo-image-picker';
 import { useSettings } from '../../context/SettingsContext';
 
@@ -186,10 +186,10 @@ export default function ProfileScreen() {
             <View style={[styles.avatar, { width: 96, height: 96, borderRadius: 48, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.surface, borderWidth: 3, borderColor: '#fff' }]}>
               <ActivityIndicator size="small" color="#0a3d3c" />
             </View>
-          ) : user?.avatar ? (
+          ) : getAvatarUrl(user?.avatar) ? (
             <Avatar.Image 
               size={96} 
-              source={{ uri: user.avatar }} 
+              source={{ uri: getAvatarUrl(user.avatar) }} 
               style={styles.avatar} 
             />
           ) : (

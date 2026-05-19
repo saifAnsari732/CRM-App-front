@@ -36,7 +36,7 @@ import useLocationTracker from "../../hooks/useLocationTracker";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../../context/AuthContext";
-import { dashboardApi, meetingApi, expenseApi, taskApi, leadAPI } from "../../services/api";
+import { dashboardApi, meetingApi, expenseApi, taskApi, leadAPI, getAvatarUrl } from "../../services/api";
 import { useSettings } from "../../context/SettingsContext";
 
 const { width } = Dimensions.get("window");
@@ -241,8 +241,8 @@ export default function EmployeeDashboardScreen() {
             onPress={() => router.push("/(employee)/profile")}
             style={[styles.avatarPill, { overflow: 'hidden' }]}
           >
-            {user?.avatar ? (
-              <Image source={{ uri: user.avatar }} style={{ width: "100%", height: "100%" }} />
+            {getAvatarUrl(user?.avatar) ? (
+              <Image source={{ uri: getAvatarUrl(user.avatar) }} style={{ width: "100%", height: "100%" }} />
             ) : (
               <Text style={styles.avatarText}>
                 {user?.name?.charAt(0).toUpperCase() || "S"}
@@ -291,8 +291,8 @@ export default function EmployeeDashboardScreen() {
               {/* Profile image avatar on right */}
               <View style={styles.profileAvatarBox}>
                 <View style={[styles.avatarImgContainer, { overflow: 'hidden' }]}>
-                  {user?.avatar ? (
-                    <Image source={{ uri: user.avatar }} style={{ width: "100%", height: "100%" }} />
+                  {getAvatarUrl(user?.avatar) ? (
+                    <Image source={{ uri: getAvatarUrl(user.avatar) }} style={{ width: "100%", height: "100%" }} />
                   ) : (
                     <Text style={styles.avatarBigLetter}>
                       {user?.name?.charAt(0).toUpperCase() || "S"}
@@ -652,8 +652,8 @@ export default function EmployeeDashboardScreen() {
               <View style={styles.menuHeader}>
                 <View style={styles.menuUserPill}>
                   <View style={[styles.menuUserAvatar, { overflow: 'hidden' }]}>
-                    {user?.avatar ? (
-                      <Image source={{ uri: user.avatar }} style={{ width: "100%", height: "100%" }} />
+                    {getAvatarUrl(user?.avatar) ? (
+                      <Image source={{ uri: getAvatarUrl(user.avatar) }} style={{ width: "100%", height: "100%" }} />
                     ) : (
                       <Text style={styles.menuAvatarTextInside}>
                         {user?.name?.charAt(0).toUpperCase() || "S"}

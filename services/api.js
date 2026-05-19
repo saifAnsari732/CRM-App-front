@@ -8,6 +8,22 @@ import { Platform } from 'react-native';
 //   default: 'http://localhost:5000/api',
 // });
 
+export const getAvatarUrl = (avatar) => {
+  if (!avatar || typeof avatar !== 'string') return null;
+  const clean = avatar.trim();
+  if (clean === '' || clean === 'null' || clean === 'undefined') return null;
+  
+  if (clean.startsWith('http://') || clean.startsWith('https://')) {
+    return clean;
+  }
+  
+  const baseUrlWithoutApi = 'https://crm-app-xh1t.onrender.com';
+  if (clean.startsWith('/')) {
+    return `${baseUrlWithoutApi}${clean}`;
+  }
+  return `${baseUrlWithoutApi}/${clean}`;
+};
+
 export const BASE_URL = 'https://crm-app-xh1t.onrender.com/api';
 
 console.log('Using Active API Base URL:', BASE_URL);
