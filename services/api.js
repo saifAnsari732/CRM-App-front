@@ -8,7 +8,7 @@ import { Platform } from 'react-native';
 //   default: 'http://localhost:5000/api',
 // });
 
-export const BASE_URL = 'https://crm-b-y8rv.onrender.com/api';
+export const BASE_URL = 'https://crm-app-xh1t.onrender.com/api';
 
 console.log('Using Active API Base URL:', BASE_URL);
 
