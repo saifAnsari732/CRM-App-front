@@ -52,9 +52,13 @@ TaskManager.defineTask(BACKGROUND_TRACKING_TASK, async ({ data: { locations }, e
         const lastLocation = JSON.parse(lastLocationStr);
         const distance = getDistanceFromLatLonInMeters(lastLocation.lat, lastLocation.lng, latitude, longitude);
         
-        // Anchor-based threshold to eliminate cell-tower bouncing and indoor drift
-        // If accuracy is poor (>15m), we require at least 80m jump to shift the anchor.
-        const requiredThreshold = accuracy > 15 ? 80 : 15;
+        // Robust background drift filter:
+        // 1. If accuracy is poor (>15m), require an 80m jump.
+        // 2. If speed is extremely low (< 0.4 m/s or < 1.4 km/h), they are stationary.
+        //    For stationary states, require at least a 35m jump to filter out GPS/Wi-Fi drift.
+        // 3. Otherwise, if actively moving, require a standard 15m update jump.
+        const isStationary = !speed || speed < 0.4;
+        const requiredThreshold = accuracy > 15 ? 80 : (isStationary ? 35 : 15);
         
         if (distance < requiredThreshold) {
           // console.log(`📍 BackgroundTask: Ignored drift (${distance.toFixed(1)}m < ${requiredThreshold}m anchor threshold for accuracy ${accuracy.toFixed(1)}m)`);
