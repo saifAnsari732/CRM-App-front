@@ -91,6 +91,25 @@ TaskManager.defineTask(BACKGROUND_TRACKING_TASK, async ({ data: { locations }, e
       // Update last recorded location
       await storage.setItem('last_recorded_location', JSON.stringify(newCoord));
       
+      // Helper to accumulate distance locally
+      const accumulateDistanceLocally = async () => {
+        if (lastLocationStr) {
+          try {
+            const lastLocation = JSON.parse(lastLocationStr);
+            const dMeters = getDistanceFromLatLonInMeters(lastLocation.lat, lastLocation.lng, latitude, longitude);
+            const dKm = dMeters / 1000.0;
+            
+            const accDistStr = await storage.getItem('tracking_accumulated_distance');
+            let accDist = accDistStr ? parseFloat(accDistStr) : 0.0;
+            accDist += dKm;
+            await storage.setItem('tracking_accumulated_distance', accDist.toFixed(2));
+            console.log(`📍 BackgroundTask: Accumulated distance updated locally: ${accDist.toFixed(2)} km`);
+          } catch (e) {
+            console.error('📍 BackgroundTask: Local distance accumulation failed:', e);
+          }
+        }
+      };
+
       // 1. Attempt to stream location update via Socket
       let sentViaSocket = false;
       const socket = await socketService.connect();
@@ -103,13 +122,14 @@ TaskManager.defineTask(BACKGROUND_TRACKING_TASK, async ({ data: { locations }, e
       
       if (sentViaSocket) {
         console.log('📍 BackgroundTask: Streamed coordinate successfully via Socket!');
+        await accumulateDistanceLocally();
       } else {
         // 2. Socket offline: fallback to REST API
         console.log('📍 BackgroundTask: Socket offline. Attempting REST API fallback.');
         const token = await storage.getItem('userToken');
         if (token) {
           try {
-            await axios.post(`${BASE_URL}/tracking/update`, {
+            const response = await axios.post(`${BASE_URL}/tracking/update`, {
               sessionId,
               coordinates: [newCoord],
             }, {
@@ -117,9 +137,18 @@ TaskManager.defineTask(BACKGROUND_TRACKING_TASK, async ({ data: { locations }, e
               timeout: 6000,
             });
             console.log('📍 BackgroundTask: Uploaded coordinate successfully via REST API!');
+            if (response.data && response.data.success) {
+              const serverDistance = response.data.totalDistance || 0.0;
+              await storage.setItem('tracking_accumulated_distance', serverDistance.toFixed(2));
+              console.log(`📍 BackgroundTask: Distance synced with server: ${serverDistance.toFixed(2)} km`);
+            } else {
+              await accumulateDistanceLocally();
+            }
           } catch (apiErr) {
             // 3. Completely disconnected: cache coordinate in local offline queue
             console.log('📍 BackgroundTask: Internet unavailable. Caching coordinate locally.');
+            await accumulateDistanceLocally();
+            
             const queueKey = 'offline_request_queue';
             const currentQueueStr = await storage.getItem(queueKey);
             const queue = currentQueueStr ? JSON.parse(currentQueueStr) : [];
@@ -134,6 +163,8 @@ TaskManager.defineTask(BACKGROUND_TRACKING_TASK, async ({ data: { locations }, e
             
             await storage.setItem(queueKey, JSON.stringify(queue));
           }
+        } else {
+          await accumulateDistanceLocally();
         }
       }
     } catch (e) {

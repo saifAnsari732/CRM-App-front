@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, View, ScrollView, TouchableOpacity, 
-  ActivityIndicator, Alert, Platform, Dimensions, Linking 
+  ActivityIndicator, Alert, Platform, Dimensions, Linking, AppState 
 } from 'react-native';
 import { Text, Surface } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react-native';
 import useLocationTracker from '../../hooks/useLocationTracker';
 import { storage } from '../../services/storage';
+import { trackingApi } from '../../services/api';
 import * as Location from 'expo-location';
 
 const { width } = Dimensions.get('window');
@@ -89,6 +90,75 @@ export default function ActiveShiftMapScreen() {
     };
   }, [isTracking, transportMode]);
 
+  // 1.5. Local Cache & AppState Sync for Active Tracking Session Distance
+  useEffect(() => {
+    let appStateSubscription = null;
+
+    const loadLocalCachedDistance = async () => {
+      try {
+        const cachedDist = await storage.getItem('tracking_accumulated_distance');
+        if (cachedDist) {
+          const parsed = parseFloat(cachedDist) || 0.0;
+          totalDistanceRef.current = parsed;
+          setDistance(parsed.toFixed(2));
+          console.log('📍 Tracking Screen: Initialized distance from local cache:', parsed);
+        }
+      } catch (err) {
+        console.log('📍 Tracking Screen: Failed to load cached distance:', err);
+      }
+    };
+
+    const syncDistanceWithBackend = async () => {
+      try {
+        const sessionId = await storage.getItem('currentTrackingSessionId');
+        if (!sessionId) return;
+
+        const response = await trackingApi.getTodaySessions();
+        if (response && response.data && response.data.success) {
+          const activeSession = response.data.sessions.find(s => s.sessionId === sessionId);
+          if (activeSession) {
+            const backendDistance = parseFloat(activeSession.totalDistance) || 0.0;
+            console.log('📍 Tracking Screen: Synchronized distance with backend:', backendDistance);
+            totalDistanceRef.current = backendDistance;
+            const distStr = backendDistance.toFixed(2);
+            setDistance(distStr);
+            await storage.setItem('tracking_accumulated_distance', distStr);
+          }
+        }
+      } catch (err) {
+        console.log('📍 Tracking Screen: Failed to sync distance with backend:', err);
+      }
+    };
+
+    if (isTracking) {
+      // Step 1: Load cache immediately on mount / when tracking becomes active
+      loadLocalCachedDistance().then(() => {
+        // Step 2: Proactively sync with backend once (online check)
+        syncDistanceWithBackend();
+      });
+
+      // Step 3: Register AppState listener to sync distance when returning from background / lock screen
+      appStateSubscription = AppState.addEventListener('change', async (nextAppState) => {
+        if (nextAppState === 'active') {
+          console.log('📍 Tracking Screen: App returned to active foreground. Syncing distance telemetry...');
+          // Load local cache first to show immediate updates
+          await loadLocalCachedDistance();
+          // Fetch backend distance to ensure consistency with background tracker database writes
+          await syncDistanceWithBackend();
+        }
+      });
+    } else {
+      totalDistanceRef.current = 0.0;
+      setDistance('0.00');
+    }
+
+    return () => {
+      if (appStateSubscription) {
+        appStateSubscription.remove();
+      }
+    };
+  }, [isTracking]);
+
   // 2. Real-time Location telemetry updates
   useEffect(() => {
     if (isTracking) {
@@ -128,7 +198,9 @@ export default function ActiveShiftMapScreen() {
               
               if (d >= requiredDistance) {
                 totalDistanceRef.current += d;
-                setDistance(totalDistanceRef.current.toFixed(2));
+                const newDistStr = totalDistanceRef.current.toFixed(2);
+                setDistance(newDistStr);
+                storage.setItem('tracking_accumulated_distance', newDistStr).catch(() => {});
                 lastCoordRef.current = { lat, lng };
                 setSpeed(displaySpeed);
               } else {

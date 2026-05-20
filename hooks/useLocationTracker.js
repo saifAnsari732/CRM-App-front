@@ -150,6 +150,7 @@ export default function useLocationTracker() {
       // 2. Cache session details locally
       await storage.setItem('currentTrackingSessionId', sessionId);
       await storage.setItem('trackingStartTime', session.startTime);
+      await storage.setItem('tracking_accumulated_distance', '0.00');
 
       // 3. Connect socket & emit tracking_started
       try {
@@ -275,6 +276,8 @@ export default function useLocationTracker() {
       // 5. Clean up local secure storage cache
       await storage.removeItem('currentTrackingSessionId');
       await storage.removeItem('trackingStartTime');
+      await storage.removeItem('tracking_accumulated_distance');
+      await storage.removeItem('last_recorded_location');
 
       setIsTracking(false);
       console.log('📍 useLocationTracker: Background tracking stopped. Distance:', totalDistance, 'km');
@@ -285,6 +288,8 @@ export default function useLocationTracker() {
       // Force clean local cache if server is offline/fails
       await storage.removeItem('currentTrackingSessionId');
       await storage.removeItem('trackingStartTime');
+      await storage.removeItem('tracking_accumulated_distance');
+      await storage.removeItem('last_recorded_location');
       try {
         await Location.stopLocationUpdatesAsync(BACKGROUND_TRACKING_TASK);
       } catch {}
