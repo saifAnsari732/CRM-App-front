@@ -188,13 +188,10 @@ export default function ActiveShiftMapScreen() {
                 lng
               );
               
-              // Robust GPS Drift & Speed Jitter Filter:
-              // 1. If speed is explicitly supported and is >= 1.2 m/s (4.3 km/h), they are actively moving.
-              // 2. If speed is lower or not supported, require a significant physical coordinate jump of at least 40 meters (0.040 km) to prevent stationary drift.
-              const speedVal = mps !== null && mps !== undefined ? mps : 0;
-              const hasExplicitSpeed = mps !== null && mps !== undefined;
-              const isMoving = hasExplicitSpeed ? speedVal >= 1.2 : d >= 0.040;
-              const requiredDistance = isMoving ? 0.015 : 0.040; // 15m if moving fast, 40m if stationary/slow
+              // Relaxed GPS Drift Filter:
+              // 15 meters (0.015 km) is industry standard to filter out minor stationary desk drift
+              // while accurately capturing walking and driving updates.
+              const requiredDistance = 0.015; // 15 meters
               
               if (d >= requiredDistance) {
                 totalDistanceRef.current += d;

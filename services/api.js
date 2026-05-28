@@ -1,12 +1,13 @@
 import axios from 'axios';
 import { storage } from './storage';
-import { Platform } from 'react-native';
 
-// export const BASE_URL = Platform.select({
-//   android: 'http://192.168.0.108:5000/api',
-//   ios: 'http://192.168.0.108:5000/api',
-//   default: 'http://localhost:5000/api',
-// });
+let unauthorizedCallback = null;
+export const setUnauthorizedCallback = (callback) => {
+  unauthorizedCallback = callback;
+};
+
+export const BASE_URL = 'https://kisanteamweb.it.com/api';
+
 
 export const getAvatarUrl = (avatar) => {
   if (!avatar || typeof avatar !== 'string') return null;
@@ -17,14 +18,14 @@ export const getAvatarUrl = (avatar) => {
     return clean;
   }
   
-  const baseUrlWithoutApi = 'https://crm-app-xh1t.onrender.com';
+  const baseUrlWithoutApi = 'https://kisanteamweb.it.com'; // Production URL
   if (clean.startsWith('/')) {
     return `${baseUrlWithoutApi}${clean}`;
   }
   return `${baseUrlWithoutApi}/${clean}`;
 };
 
-export const BASE_URL = 'https://crm-app-xh1t.onrender.com/api';
+// export const BASE_URL = 'https://kisanteamweb.it.com/api'; // Production URL (already set above)
 
 console.log('Using Active API Base URL:', BASE_URL);
 
@@ -87,6 +88,10 @@ API.interceptors.response.use(
         await storage.removeItem('userToken');
         await storage.removeItem('token');
         await storage.removeItem('user');
+        await storage.removeItem('userData');
+        if (unauthorizedCallback) {
+          unauthorizedCallback();
+        }
         return Promise.reject(refreshErr);
       }
     }
@@ -131,6 +136,7 @@ export const meetingAPI = {
 // ─── Expenses ─────────────────────────────────────────────────────────────
 export const expenseAPI = {
   create: (data) => API.post('/expenses', data),
+  claimDA: (data) => API.post('/expenses/claim-da', data),
   getMy: (params) => API.get('/expenses/my', { params }),
   getAll: (params) => API.get('/expenses/all', { params }),
   approve: (id, data) => API.put(`/expenses/${id}/approve`, data),
@@ -242,6 +248,7 @@ export const meetingApi = {
 
 export const expenseApi = {
   create: (data) => expenseAPI.create(data),
+  claimDA: (data) => expenseAPI.claimDA(data),
   getMy: (params) => expenseAPI.getMy(params),
 };
 

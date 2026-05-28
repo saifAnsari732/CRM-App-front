@@ -66,13 +66,18 @@ function InitialLayout() {
 }
 
 import { SettingsProvider } from '../context/SettingsContext';
+import { NotificationProvider } from '../context/NotificationContext';
+import NotificationBanner from '../components/NotificationBanner';
 
 export default function RootLayout() {
   return (
     <PaperProvider>
       <AuthProvider>
         <SettingsProvider>
-          <InitialLayout />
+          <NotificationProvider>
+            <InitialLayout />
+            <NotificationBanner />
+          </NotificationProvider>
         </SettingsProvider>
       </AuthProvider>
     </PaperProvider>

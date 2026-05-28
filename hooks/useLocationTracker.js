@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Location from 'expo-location';
-import { Platform } from 'react-native';
+import { Platform, PermissionsAndroid } from 'react-native';
 import { storage } from '../services/storage';
 import { trackingApi } from '../services/api';
 import socketService from '../services/socket';
@@ -46,8 +46,34 @@ export default function useLocationTracker() {
         setPermissionStatus('granted');
         return true;
       }
+
+      // 0. Request notification permission on Android 13+ (API 33+) to keep background task active
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        try {
+          const hasNotificationPermission = await PermissionsAndroid.check(
+            'android.permission.POST_NOTIFICATIONS'
+          );
+          if (!hasNotificationPermission) {
+            const status = await PermissionsAndroid.request(
+              'android.permission.POST_NOTIFICATIONS',
+              {
+                title: 'Notification Permission Required',
+                message: 'StaffSync requires notification permission to show active tracking logs in your system header.',
+                buttonNeutral: 'Ask Me Later',
+                buttonNegative: 'Cancel',
+                buttonPositive: 'OK',
+              }
+            );
+            if (status !== PermissionsAndroid.RESULTS.GRANTED) {
+              console.log('📍 useLocationTracker: Post notification permission denied.');
+            }
+          }
+        } catch (notifErr) {
+          console.warn('⚠️ useLocationTracker: Failed to request notification permission:', notifErr.message);
+        }
+      }
       
-      // 0. Check if device Location Services are turned on
+      // 0.5. Check if device Location Services are turned on
       const servicesEnabled = await Location.hasServicesEnabledAsync();
       if (!servicesEnabled) {
         alert('Please turn on your device GPS / Location Services before starting the shift.');
@@ -179,10 +205,12 @@ export default function useLocationTracker() {
             deferredUpdatesInterval: 10000,
             deferredUpdatesDistance: 15,
             foregroundService: {
-              notificationTitle: 'StaffSync Tracking Active',
-              notificationBody: 'Your location is securely recorded in the background for active shift logs.',
-              notificationColor: '#008080',
+              notificationTitle: 'Shift Tracker Active 🟢',
+              notificationBody: 'Your live location is being securely logged for shift telemetry.',
+              notificationColor: '#2563eb', // Brand premium blue color
             },
+            // Show top system bar indicator on iOS (blue header/status pill like Uber/Rapido)
+            showsBackgroundLocationIndicator: true,
             // Keep CPU awake in background on Android
             pausesUpdatesAutomatically: false,
           });

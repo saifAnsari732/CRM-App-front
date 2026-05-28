@@ -262,7 +262,7 @@ class SocketService {
 
 const socketService = new SocketService();
 
-// Support both export defaults and standalone naming exports for absolute flexibility
+//Support both export defaults and standalone naming exports for absolute flexibility
 export const initSocket = (token) => socketService.connect();
 export const getSocket = () => socketService.socket;
 export const isSocketConnected = () => socketService.socket?.connected ?? false;

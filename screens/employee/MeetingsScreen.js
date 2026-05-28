@@ -30,6 +30,51 @@ export default function MeetingsScreen() {
   const [status, setStatus] = useState('scheduled'); // 'scheduled' (Pending), 'completed', 'follow-up'
   const [meetingNotes, setMeetingNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [fetchingLocation, setFetchingLocation] = useState(false);
+
+  const handleFetchCurrentLocation = async () => {
+    try {
+      setFetchingLocation(true);
+      
+      // Request permissions
+      const { status: permStatus } = await Location.requestForegroundPermissionsAsync();
+      if (permStatus !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permission is required to fetch current address.');
+        return;
+      }
+
+      // Get location
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const { latitude, longitude } = position.coords;
+
+      // Reverse geocode
+      const geocoded = await Location.reverseGeocodeAsync({ latitude, longitude });
+      if (geocoded && geocoded.length > 0) {
+        const res = geocoded[0];
+        const street = res.street || res.name || '';
+        const district = res.district || res.subregion || '';
+        const city = res.city || '';
+        const region = res.region || '';
+        const code = res.postalCode || '';
+        
+        const fullAddress = [street, district, city, region, code]
+          .filter(part => part && part.trim().length > 0)
+          .join(', ');
+          
+        setMeetingAddress(fullAddress || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+      } else {
+        setMeetingAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+      }
+    } catch (err) {
+      console.log('⚠️ MeetingsScreen: Location fetch error:', err.message);
+      Alert.alert('Error', 'Failed to fetch current location address. Please try again.');
+    } finally {
+      setFetchingLocation(false);
+    }
+  };
 
   const fetchMeetings = async () => {
     try {
@@ -80,6 +125,22 @@ export default function MeetingsScreen() {
     if (!clientName.trim() || !mobileNumber.trim() || !meetingAddress.trim()) {
       Alert.alert('Required Fields', 'Please complete Client Name, Mobile, and Address.');
       return;
+    }
+
+    if (clientName.trim() === mobileNumber.trim()) {
+      Alert.alert('Invalid Input', 'Client name and mobile number cannot be the same.');
+      return;
+    }
+
+    if (!editingMeeting) {
+      const duplicate = meetings.find(m => 
+        m.mobileNumber === mobileNumber.trim() || 
+        (m.clientName && m.clientName.trim().toLowerCase() === clientName.trim().toLowerCase())
+      );
+      if (duplicate) {
+        Alert.alert('Duplicate Found', 'A client meeting with this Name or Mobile Number already exists.');
+        return;
+      }
     }
 
     try {
@@ -297,7 +358,16 @@ export default function MeetingsScreen() {
               </View>
 
               {/* Visit Location Address */}
-              <Text style={styles.inputLabel}>Meeting Address *</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, marginBottom: 6 }}>
+                <Text style={[styles.inputLabel, { marginTop: 0, marginBottom: 0 }]}>Meeting Address *</Text>
+                <TouchableOpacity onPress={handleFetchCurrentLocation} disabled={fetchingLocation}>
+                  {fetchingLocation ? (
+                    <ActivityIndicator size="small" color="#1d4ed8" />
+                  ) : (
+                    <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#1d4ed8' }}>Fetch Current</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
               <View style={styles.inputWrapper}>
                 <MapPin size={16} color="#94a3b8" style={{ marginLeft: 12, marginRight: 8 }} />
                 <TextInput

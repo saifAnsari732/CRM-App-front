@@ -48,23 +48,23 @@ TaskManager.defineTask(BACKGROUND_TRACKING_TASK, async ({ data: { locations }, e
       
       // Check distance from last recorded location
       const lastLocationStr = await storage.getItem('last_recorded_location');
+      let lastLocation = null;
       if (lastLocationStr) {
-        const lastLocation = JSON.parse(lastLocationStr);
-        const distance = getDistanceFromLatLonInMeters(lastLocation.lat, lastLocation.lng, latitude, longitude);
-        
-        // Robust background drift & speed jitter filter:
-        // 1. If accuracy is poor (>15m), require an 80m jump.
-        // 2. If speed is low (< 1.2 m/s or < 4.3 km/h), they are stationary/drifting.
-        //    For stationary states, require at least a 60m jump to filter out Wi-Fi/cellular drift.
-        // 3. Otherwise, if actively moving, require a standard 15m update jump.
-        const speedVal = speed !== null && speed !== undefined ? speed : 0;
-        const hasExplicitSpeed = speed !== null && speed !== undefined;
-        const isStationary = hasExplicitSpeed ? speedVal < 1.2 : true;
-        const requiredThreshold = accuracy > 15 ? 80 : (isStationary ? 60 : 15);
-        
-        if (distance < requiredThreshold) {
-          // console.log(`📍 BackgroundTask: Ignored drift (${distance.toFixed(1)}m < ${requiredThreshold}m anchor threshold for accuracy ${accuracy.toFixed(1)}m)`);
-          return;
+        try {
+          lastLocation = JSON.parse(lastLocationStr);
+          const distance = getDistanceFromLatLonInMeters(lastLocation.lat, lastLocation.lng, latitude, longitude);
+          
+          // Relaxed drift filter:
+          // 1. If accuracy is poor (>35m), require at least a 35m jump to filter out cell tower leaps.
+          // 2. If accuracy is good (<=35m), require a standard 15m jump (industry standard for active walking/driving).
+          const requiredThreshold = accuracy > 35 ? 35 : 15;
+          
+          if (distance < requiredThreshold) {
+            // console.log(`📍 BackgroundTask: Ignored drift (${distance.toFixed(1)}m < ${requiredThreshold}m threshold)`);
+            return;
+          }
+        } catch (parseErr) {
+          console.error('📍 BackgroundTask: Error parsing last location:', parseErr);
         }
       }
       
@@ -88,15 +88,14 @@ TaskManager.defineTask(BACKGROUND_TRACKING_TASK, async ({ data: { locations }, e
         timestamp: new Date(timestamp).toISOString(),
       };
       
-      // Update last recorded location
+      // Update last recorded location in storage
       await storage.setItem('last_recorded_location', JSON.stringify(newCoord));
       
       // Helper to accumulate distance locally
-      const accumulateDistanceLocally = async () => {
-        if (lastLocationStr) {
+      const accumulateDistanceLocally = async (prevLocation) => {
+        if (prevLocation) {
           try {
-            const lastLocation = JSON.parse(lastLocationStr);
-            const dMeters = getDistanceFromLatLonInMeters(lastLocation.lat, lastLocation.lng, latitude, longitude);
+            const dMeters = getDistanceFromLatLonInMeters(prevLocation.lat, prevLocation.lng, latitude, longitude);
             const dKm = dMeters / 1000.0;
             
             const accDistStr = await storage.getItem('tracking_accumulated_distance');
@@ -110,62 +109,47 @@ TaskManager.defineTask(BACKGROUND_TRACKING_TASK, async ({ data: { locations }, e
         }
       };
 
-      // 1. Attempt to stream location update via Socket
-      let sentViaSocket = false;
-      const socket = await socketService.connect();
-      if (socket && socket.connected) {
-        sentViaSocket = socketService.emitLocationPing({
-          sessionId,
-          ...newCoord,
-        });
-      }
-      
-      if (sentViaSocket) {
-        console.log('📍 BackgroundTask: Streamed coordinate successfully via Socket!');
-        await accumulateDistanceLocally();
-      } else {
-        // 2. Socket offline: fallback to REST API
-        console.log('📍 BackgroundTask: Socket offline. Attempting REST API fallback.');
-        const token = await storage.getItem('userToken');
-        if (token) {
-          try {
-            const response = await axios.post(`${BASE_URL}/tracking/update`, {
-              sessionId,
-              coordinates: [newCoord],
-            }, {
-              headers: { Authorization: `Bearer ${token}` },
-              timeout: 6000,
-            });
-            console.log('📍 BackgroundTask: Uploaded coordinate successfully via REST API!');
-            if (response.data && response.data.success) {
-              const serverDistance = response.data.totalDistance || 0.0;
-              await storage.setItem('tracking_accumulated_distance', serverDistance.toFixed(2));
-              console.log(`📍 BackgroundTask: Distance synced with server: ${serverDistance.toFixed(2)} km`);
-            } else {
-              await accumulateDistanceLocally();
-            }
-          } catch (apiErr) {
-            // 3. Completely disconnected: cache coordinate in local offline queue
-            console.log('📍 BackgroundTask: Internet unavailable. Caching coordinate locally.');
-            await accumulateDistanceLocally();
-            
-            const queueKey = 'offline_request_queue';
-            const currentQueueStr = await storage.getItem(queueKey);
-            const queue = currentQueueStr ? JSON.parse(currentQueueStr) : [];
-            
-            queue.push({
-              id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-              endpoint: '/tracking/update',
-              method: 'POST',
-              data: { sessionId, coordinates: [newCoord] },
-              timestamp: new Date().toISOString(),
-            });
-            
-            await storage.setItem(queueKey, JSON.stringify(queue));
+      // Always use REST API for background tasks to prevent silent TCP drops on mobile OSes when screen is off
+      console.log('📍 BackgroundTask: Attempting REST API sync...');
+      const token = await storage.getItem('userToken');
+      if (token) {
+        try {
+          const response = await axios.post(`${BASE_URL}/tracking/update`, {
+            sessionId,
+            coordinates: [newCoord],
+          }, {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 6000,
+          });
+          console.log('📍 BackgroundTask: Uploaded coordinate successfully via REST API!');
+          if (response.data && response.data.success) {
+            const serverDistance = response.data.totalDistance || 0.0;
+            await storage.setItem('tracking_accumulated_distance', serverDistance.toFixed(2));
+            console.log(`📍 BackgroundTask: Distance synced with server: ${serverDistance.toFixed(2)} km`);
+          } else {
+            await accumulateDistanceLocally(lastLocation);
           }
-        } else {
-          await accumulateDistanceLocally();
+        } catch (apiErr) {
+          // 3. Completely disconnected: cache coordinate in local offline queue
+          console.log('📍 BackgroundTask: Internet unavailable. Caching coordinate locally.');
+          await accumulateDistanceLocally(lastLocation);
+          
+          const queueKey = 'offline_request_queue';
+          const currentQueueStr = await storage.getItem(queueKey);
+          const queue = currentQueueStr ? JSON.parse(currentQueueStr) : [];
+          
+          queue.push({
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            endpoint: '/tracking/update',
+            method: 'POST',
+            data: { sessionId, coordinates: [newCoord] },
+            timestamp: new Date().toISOString(),
+          });
+          
+          await storage.setItem(queueKey, JSON.stringify(queue));
         }
+      } else {
+        await accumulateDistanceLocally(lastLocation);
       }
     } catch (e) {
       console.error('📍 BackgroundTask: Failed to process background tick:', e);

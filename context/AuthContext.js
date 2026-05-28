@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { storage } from '../services/storage';
 import socketService from '../services/socket';
+import { setUnauthorizedCallback } from '../services/api';
 
 const AuthContext = createContext({});
 
@@ -10,6 +11,16 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     loadStorageData();
+    
+    // Register unauthorized callback to log out user automatically on 401
+    setUnauthorizedCallback(() => {
+      console.log('🔐 AuthContext: Unauthorized 401 received. Automatically logging out...');
+      logout();
+    });
+    
+    return () => {
+      setUnauthorizedCallback(null);
+    };
   }, []);
 
   async function loadStorageData() {

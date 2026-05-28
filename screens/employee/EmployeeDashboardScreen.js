@@ -330,7 +330,7 @@ export default function EmployeeDashboardScreen() {
 
         {/* 3. KPI Grid (2x2) */}
         <View style={styles.kpiGrid}>
-          {/* Box 1: Distance */}
+          {/* Box 1: Distance & Rate */}
           <Surface style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
             <View style={styles.kpiHeader}>
               <Text style={[styles.kpiTitle, { color: colors.subText }]}>{t('distanceToday')}</Text>
@@ -350,27 +350,22 @@ export default function EmployeeDashboardScreen() {
             <Text style={[styles.kpiValue, { color: colors.text }]}>{stats?.meetingCount || 0}</Text>
           </Surface>
 
-          {/* Box 3: Expenses */}
+          {/* Box 3: Total Distance */}
           <Surface style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
             <View style={styles.kpiHeader}>
-              <Text style={[styles.kpiTitle, { color: colors.subText }]}>{t('expenses')}</Text>
-              <Wallet size={18} color="#f59e0b" />
+              <Text style={[styles.kpiTitle, { color: colors.subText }]}>TOTAL DISTANCE</Text>
+              <Navigation size={18} color="#00b4d8" />
             </View>
-            <Text style={[styles.kpiValue, { color: colors.text }]}>₹{stats?.expenseTotal || 0}</Text>
+            <Text style={[styles.kpiValue, { color: colors.text }]}>{stats?.totalDistanceAllDates || "0.00"} km</Text>
           </Surface>
 
-          {/* Box 4: Status */}
+          {/* Box 4: Travel Rate */}
           <Surface style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
             <View style={styles.kpiHeader}>
-              <Text style={[styles.kpiTitle, { color: colors.subText }]}>{t('status')}</Text>
-              <CheckCircle
-                size={18}
-                color={isTracking ? "#10b981" : "#ef4444"}
-              />
+              <Text style={[styles.kpiTitle, { color: colors.subText }]}>TRAVEL RATE</Text>
+              <Wallet size={18} color="#f59e0b" />
             </View>
-            <Text style={[styles.kpiValue, { color: colors.text }]}>
-              {stats?.status ? (stats.status === 'present' ? t('present') : t('absent')) : t('absent')}
-            </Text>
+            <Text style={[styles.kpiValue, { color: colors.text }]}>₹{stats?.travelRate || 0}/km</Text>
           </Surface>
         </View>
 

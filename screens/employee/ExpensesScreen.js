@@ -12,7 +12,7 @@ import {
 } from 'lucide-react-native';
 import Svg, { Rect, Path, Line, Circle } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
-import { expenseApi, uploadAPI } from '../../services/api';
+import { expenseApi, authApi, uploadAPI } from '../../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -34,6 +34,14 @@ export default function ExpensesScreen() {
   
   const [history, setHistory] = useState([]);
   
+  // DA Specific States
+  const [daHistory, setDaHistory] = useState([]);
+  const [totalDA, setTotalDA] = useState(0);
+  const [showDaModal, setShowDaModal] = useState(false);
+  const [daAmount, setDaAmount] = useState('');
+  const [daReceiptImage, setDaReceiptImage] = useState(null);
+  const [claimingDA, setClaimingDA] = useState(false);
+  
   // Image Upload State
   const [receiptImage, setReceiptImage] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -52,6 +60,12 @@ export default function ExpensesScreen() {
       if (res.data && res.data.success) {
         setHistory(res.data.expenses || []);
       }
+      
+      const userRes = await authApi.getMe();
+      if (userRes.data && userRes.data.success) {
+        setDaHistory(userRes.data.user.daHistory || []);
+        setTotalDA(userRes.data.user.DA || 0);
+      }
     } catch (err) {
       console.log('⚠️ ExpensesScreen: Failed to fetch history:', err.message);
     } finally {
@@ -63,7 +77,7 @@ export default function ExpensesScreen() {
     fetchExpenses();
   }, []);
 
-  const handlePickImage = async () => {
+  const handlePickImage = async (isDA = false) => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (permissionResult.granted === false) {
@@ -79,11 +93,65 @@ export default function ExpensesScreen() {
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setReceiptImage(result.assets[0]);
+        if (isDA) {
+          setDaReceiptImage(result.assets[0]);
+        } else {
+          setReceiptImage(result.assets[0]);
+        }
       }
     } catch (error) {
       console.log('Error picking image:', error);
       Alert.alert('Error', 'Failed to pick image.');
+    }
+  };
+
+  const handleClaimDA = async () => {
+    if (!daAmount) {
+      Alert.alert('Incomplete Fields', 'Please specify the DA amount.');
+      return;
+    }
+
+    try {
+      setClaimingDA(true);
+      let receiptUrl = '';
+      
+      if (daReceiptImage && daReceiptImage.base64) {
+        setUploadingImage(true);
+        try {
+          const base64Data = `data:image/jpeg;base64,${daReceiptImage.base64}`;
+          const uploadRes = await uploadAPI.uploadImage({
+            file: base64Data,
+            fileName: `da_receipt_${Date.now()}.jpg`,
+            folder: '/crm-tracker/receipts'
+          });
+          if (uploadRes.data && uploadRes.data.success) {
+            receiptUrl = uploadRes.data.url;
+          }
+        } catch (uploadErr) {
+          console.log('⚠️ ExpensesScreen: Image upload failed:', uploadErr.message);
+        } finally {
+          setUploadingImage(false);
+        }
+      }
+
+      const payload = {
+        amount: parseFloat(daAmount),
+        receipt: receiptUrl
+      };
+
+      const res = await expenseApi.claimDA(payload);
+      if (res.data && res.data.success) {
+        Alert.alert('Success', 'Your Daily Allowance has been claimed!');
+        setDaAmount('');
+        setDaReceiptImage(null);
+        setShowDaModal(false);
+        fetchExpenses();
+      }
+    } catch (e) {
+      console.log('⚠️ ExpensesScreen: DA Submission failed:', e.message);
+      Alert.alert('Submission Error', 'Failed to log DA claim. Please try again.');
+    } finally {
+      setClaimingDA(false);
     }
   };
 
@@ -217,13 +285,22 @@ export default function ExpensesScreen() {
           <Text style={styles.title}>Expense Claims</Text>
           <Text style={styles.subtitle}>Track your field expenses and reimbursements.</Text>
         </View>
-        <TouchableOpacity 
-          style={styles.logNewBtnHeader} 
-          onPress={() => setShowAddModal(true)}
-        >
-          <Plus size={16} color="#fff" />
-          <Text style={styles.logNewBtnText}>Add Expence</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity 
+            style={[styles.logNewBtnHeader, { backgroundColor: '#2563eb' }]} 
+            onPress={() => setShowDaModal(true)}
+          >
+            <DollarSign size={16} color="#fff" />
+            <Text style={styles.logNewBtnText}>Claim DA</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.logNewBtnHeader} 
+            onPress={() => setShowAddModal(true)}
+          >
+            <Plus size={16} color="#fff" />
+            <Text style={styles.logNewBtnText}>Expense</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* 2. Premium Stats Summary Card Row */}
@@ -234,8 +311,8 @@ export default function ExpensesScreen() {
         </Surface>
 
         <Surface style={[styles.statSummaryCard, { borderLeftColor: '#10b981' }]} elevation={1}>
-          <Text style={styles.statSummaryLabel}>APPROVED</Text>
-          <Text style={styles.statSummaryValue}>₹{approvedClaimed}</Text>
+          <Text style={styles.statSummaryLabel}>TOTAL DA</Text>
+          <Text style={styles.statSummaryValue}>₹{totalDA.toFixed(2)}</Text>
         </Surface>
 
         <Surface style={[styles.statSummaryCard, { borderLeftColor: '#f59e0b' }]} elevation={1}>
@@ -429,6 +506,75 @@ export default function ExpensesScreen() {
         </View>
       </Modal>
 
+      {/* 3B. Add DA Claim Modal */}
+      <Modal
+        visible={showDaModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowDaModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Surface style={[styles.modalContent, { maxHeight: '60%' }]} elevation={5}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Claim Daily Allowance</Text>
+              <TouchableOpacity onPress={() => setShowDaModal(false)} style={styles.closeBtn}>
+                <X size={20} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              {/* DA Amount */}
+              <Text style={styles.modalSectionLabel}>AMOUNT (₹) *</Text>
+              <TextInput
+                placeholder="0.00"
+                placeholderTextColor="#52525b"
+                value={daAmount}
+                onChangeText={setDaAmount}
+                keyboardType="decimal-pad"
+                style={styles.modalTextInput}
+              />
+
+              {/* Receipt photo */}
+              <Text style={styles.modalSectionLabel}>DA RECEIPT PHOTO (Optional)</Text>
+              <View style={styles.smallReceiptContainer}>
+                {daReceiptImage ? (
+                  <View style={styles.smallImageWrapper}>
+                    <Image source={{ uri: daReceiptImage.uri }} style={styles.smallImagePreview} />
+                    <TouchableOpacity style={styles.smallRemoveBtn} onPress={() => setDaReceiptImage(null)}>
+                      <XCircle size={16} color="#ef4444" fill="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.smallDashedUploadBox} onPress={() => handlePickImage(true)}>
+                    <Plus size={18} color="#94a3b8" />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Footer action buttons */}
+              <View style={styles.modalFooter}>
+                <TouchableOpacity onPress={() => setShowDaModal(false)} style={styles.cancelBtn}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.submitBtnDark, claimingDA && { opacity: 0.8 }]} 
+                  onPress={handleClaimDA}
+                  disabled={claimingDA}
+                >
+                  {claimingDA ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.submitBtnTextDark}>
+                      {uploadingImage ? 'Uploading...' : 'Submit'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </Surface>
+        </View>
+      </Modal>
+
       {/* 4. Submission History */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Submission History</Text>
@@ -476,6 +622,41 @@ export default function ExpensesScreen() {
               </Surface>
             );
           })
+        )}
+      </View>
+
+      {/* 5. DA History */}
+      <View style={[styles.sectionHeader, { marginTop: 20 }]}>
+        <Text style={styles.sectionTitle}>DA Claims History</Text>
+      </View>
+
+      <View style={styles.historyList}>
+        {daHistory.length === 0 ? (
+          <Surface style={[styles.historyCard, { justifyContent: 'center', paddingVertical: 24 }]} elevation={1}>
+            <Text style={{ fontSize: 12, color: '#64748b', textAlign: 'center', width: '100%' }}>No DA claimed yet.</Text>
+          </Surface>
+        ) : (
+          daHistory.map((item, index) => (
+            <Surface key={item._id || index} style={styles.historyCard} elevation={1}>
+              <View style={styles.cardLeft}>
+                <View style={styles.historyIconCircle}>
+                  <DollarSign size={16} color="#475569" />
+                </View>
+                <View style={styles.historyInfo}>
+                  <Text style={styles.historyCardTitle}>DAILY ALLOWANCE</Text>
+                  <Text style={styles.historyCardMeta} numberOfLines={1}>
+                    {new Date(item.date).toLocaleDateString('en-GB')}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.cardRight}>
+                <Text style={styles.historyAmount}>₹{item.amount}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: '#e6fbf2' }]}>
+                  <Text style={[styles.statusBadgeText, { color: '#10b981' }]}>CLAIMED</Text>
+                </View>
+              </View>
+            </Surface>
+          ))
         )}
       </View>
 
