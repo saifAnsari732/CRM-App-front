@@ -1,32 +1,32 @@
 {
   "expo": {
-    "name": "StaffSync",
+    "name": "kisanTeam",
     "slug": "mobile-app",
     "scheme": "mobile-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/logo.png",
+    "icon": "./assets/logo.jpeg",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/logo.png",
+      "image": "./assets/logo.jpeg",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.easylearn.mobileapp",
+      "bundleIdentifier": "com.kisanteam.crm",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo.png",
+        "foregroundImage": "./assets/logo.jpeg",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.easylearn.mobileapp",
+      "package": "com.kisanteam.crm",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
@@ -45,7 +45,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/logo.png",
+      "favicon": "./assets/logo.jpeg",
       "bundler": "metro"
     },
     "plugins": [
@@ -54,7 +54,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/logo.png",
+          "icon": "./assets/logo.jpeg",
           "color": "#0a3d3c",
           "defaultChannel": "crm-alerts",
           "sounds": []

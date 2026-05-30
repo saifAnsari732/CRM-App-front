@@ -11,6 +11,7 @@ import {
   RefreshControl,
   Modal,
   Image,
+  TextInput,
 } from "react-native";
 import { Text, Surface } from "react-native-paper";
 import {
@@ -36,7 +37,8 @@ import useLocationTracker from "../../hooks/useLocationTracker";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../../context/AuthContext";
-import { dashboardApi, meetingApi, expenseApi, taskApi, leadAPI, getAvatarUrl } from "../../services/api";
+import * as ImagePicker from "expo-image-picker";
+import { dashboardApi, meetingApi, expenseApi, taskApi, leadAPI, getAvatarUrl, uploadAPI } from "../../services/api";
 import { useSettings } from "../../context/SettingsContext";
 
 const { width } = Dimensions.get("window");
@@ -77,7 +79,12 @@ export default function EmployeeDashboardScreen() {
   });
   const [recentMeetings, setRecentMeetings] = useState([]);
   const [recentExpenses, setRecentExpenses] = useState([]);
+  const [recentTasks, setRecentTasks] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [quickTaskTitle, setQuickTaskTitle] = useState('');
+  const [quickTaskSubmitting, setQuickTaskSubmitting] = useState(false);
+  
+  const isOffice = user?.department?.toLowerCase() === 'office';
 
   const fetchNotifications = async () => {
     try {
@@ -152,6 +159,12 @@ export default function EmployeeDashboardScreen() {
       if (expensesRes.data && expensesRes.data.success) {
         setRecentExpenses(expensesRes.data.expenses || []);
       }
+
+      // 4. Fetch recent tasks
+      const tasksRes = await taskApi.getMy();
+      if (tasksRes.data && tasksRes.data.success) {
+        setRecentTasks(tasksRes.data.tasks || []);
+      }
     } catch (err) {
       console.log("⚠️ EmployeeDashboardScreen: Failed to fetch data:", err.message);
     }
@@ -161,6 +174,23 @@ export default function EmployeeDashboardScreen() {
     loadDashboardData();
     fetchNotifications();
   }, [isTracking]);
+
+  const handleQuickTaskSubmit = async () => {
+    if (!quickTaskTitle.trim()) return;
+    setQuickTaskSubmitting(true);
+    try {
+      const res = await taskApi.create({ title: quickTaskTitle.trim(), description: 'Daily task submitted from dashboard', priority: 'medium', dueDate: new Date().toISOString() });
+      if (res.data && res.data.success) {
+        setQuickTaskTitle('');
+        loadDashboardData();
+        Alert.alert('Success', 'Task submitted!');
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to submit task');
+    } finally {
+      setQuickTaskSubmitting(false);
+    }
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -172,19 +202,19 @@ export default function EmployeeDashboardScreen() {
   const handleClockToggle = async () => {
     if (isTracking) {
       Alert.alert(
-        "Confirm Clock Out",
+        "Confirm Punch Out",
         "Are you sure you want to end your active operational tracking shift?",
         [
           { text: "Cancel", style: "cancel" },
           {
-            text: "End Shift",
+            text: "Punch Out",
             style: "destructive",
             onPress: async () => {
               const res = await stopTracking();
               if (res.success) {
                 Alert.alert(
                   "Shift Ended",
-                  `Clock out complete. Logged ${res.totalDistance?.toFixed(2) || 0} km traveled.`,
+                  `Punch out complete. Logged ${res.totalDistance?.toFixed(2) || 0} km traveled.`,
                 );
                 loadDashboardData();
               } else {
@@ -198,18 +228,59 @@ export default function EmployeeDashboardScreen() {
         ],
       );
     } else {
-      const res = await startTracking();
-      if (res.success) {
-        Alert.alert(
-          "Shift Started",
-          "You are now ON DUTY. Background GPS tracking initialized.",
-        );
-        loadDashboardData();
-      } else {
-        Alert.alert(
-          "Failed to Start Shift",
-          res.error || "Check permission permissions and try again.",
-        );
+      try {
+        const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permissionResult.granted) {
+          Alert.alert('Permission Denied', 'Camera permission is required to punch in.');
+          return;
+        }
+
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [3, 4],
+          quality: 0.7,
+        });
+
+        if (result.canceled || !result.assets || result.assets.length === 0) {
+          return; // User cancelled
+        }
+
+        const selfieImage = result.assets[0];
+        const formData = new FormData();
+        formData.append('file', {
+          uri: selfieImage.uri,
+          type: 'image/jpeg',
+          name: `punchin_selfie_${Date.now()}.jpg`
+        });
+        formData.append('folder', '/crm-tracker/attendance');
+        
+        // We upload it to store the real image per user request
+        const uploadRes = await uploadAPI.uploadImageFormData(formData);
+        
+        let selfieUrl = '';
+        if (uploadRes.data && uploadRes.data.success) {
+           selfieUrl = uploadRes.data.url;
+        } else {
+           Alert.alert("Upload Failed", "Failed to upload selfie, but proceeding...");
+        }
+
+        const res = await startTracking(selfieUrl);
+        if (res.success) {
+          Alert.alert(
+            "Shift Started",
+            "Selfie captured. You are now ON DUTY. Background GPS tracking initialized.",
+          );
+          loadDashboardData();
+        } else {
+          Alert.alert(
+            "Failed to Start Shift",
+            res.error || "Check permission permissions and try again.",
+          );
+        }
+      } catch (err) {
+        console.log('Error during punch in:', err);
+        Alert.alert("Error", "Something went wrong during Punch-In.");
       }
     }
   };
@@ -303,250 +374,321 @@ export default function EmployeeDashboardScreen() {
             </View>
 
             {/* Bottom status row */}
+            {!isOffice && (
             <View style={styles.welcomeBottomRow}>
-              <View style={styles.statusPill}>
-                <View
-                  style={[
-                    styles.statusDot,
-                    { backgroundColor: isTracking ? "#10b981" : "#ef4444" },
-                  ]}
-                />
-                <Text style={styles.statusPillText}>
-                  {isTracking ? t('statusOnline') : t('statusOffline')}
-                </Text>
-              </View>
               <TouchableOpacity
-                style={styles.enableLocationBtn}
+                style={[styles.enableLocationBtn, { width: '100%', justifyContent: 'center', backgroundColor: isTracking ? '#ef4444' : '#10b981', paddingVertical: 12, borderRadius: 12 }]}
                 onPress={handleClockToggle}
               >
-                <Navigation size={12} color="#fff" style={{ marginRight: 4 }} />
-                <Text style={styles.enableLocationText}>
-                  {isTracking ? t('stopGps') : t('enableLocation')}
+                <Navigation size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={[styles.enableLocationText, { fontSize: 16, fontWeight: 'bold', color: '#fff' }]}>
+                  {isTracking ? "PUNCH-OUT (STOP TRACKING)" : "PUNCH-IN (START SHIFT)"}
                 </Text>
               </TouchableOpacity>
             </View>
+            )}
           </LinearGradient>
         </Surface>
 
-        {/* 3. KPI Grid (2x2) */}
-        <View style={styles.kpiGrid}>
-          {/* Box 1: Distance & Rate */}
-          <Surface style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
-            <View style={styles.kpiHeader}>
-              <Text style={[styles.kpiTitle, { color: colors.subText }]}>{t('distanceToday')}</Text>
-              <Navigation size={18} color="#00b4d8" />
+        {isOffice ? (
+          <>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 10 }]}>Submit Daily Task</Text>
             </View>
-            <Text style={[styles.kpiValue, { color: colors.text }]}>
-              {stats?.distanceToday || "0.00"} km
-            </Text>
-          </Surface>
-
-          {/* Box 2: Meetings */}
-          <Surface style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
-            <View style={styles.kpiHeader}>
-              <Text style={[styles.kpiTitle, { color: colors.subText }]}>{t('meetings')}</Text>
-              <Users size={18} color="#a855f7" />
-            </View>
-            <Text style={[styles.kpiValue, { color: colors.text }]}>{stats?.meetingCount || 0}</Text>
-          </Surface>
-
-          {/* Box 3: Total Distance */}
-          <Surface style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
-            <View style={styles.kpiHeader}>
-              <Text style={[styles.kpiTitle, { color: colors.subText }]}>TOTAL DISTANCE</Text>
-              <Navigation size={18} color="#00b4d8" />
-            </View>
-            <Text style={[styles.kpiValue, { color: colors.text }]}>{stats?.totalDistanceAllDates || "0.00"} km</Text>
-          </Surface>
-
-          {/* Box 4: Travel Rate */}
-          <Surface style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
-            <View style={styles.kpiHeader}>
-              <Text style={[styles.kpiTitle, { color: colors.subText }]}>TRAVEL RATE</Text>
-              <Wallet size={18} color="#f59e0b" />
-            </View>
-            <Text style={[styles.kpiValue, { color: colors.text }]}>₹{stats?.travelRate || 0}/km</Text>
-          </Surface>
-        </View>
-
-        {/* 4. Quick Operations */}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('quickOperations')}</Text>
-        <View style={styles.operationsGrid}>
-          {/* Start/Stop Tracking */}
-           <TouchableOpacity
-            style={styles.opBtnWrapper}
-            onPress={() => router.push("/tracking")}
-          >
-            <LinearGradient
-              colors={["#075555ff", "#044d6eff"]}
-              style={styles.opBtn}
-            >
-              <Play size={24} color="#fff" />
-            </LinearGradient>
-            <Text style={[styles.opBtnText, { color: colors.text }]}>{t('tracking')}</Text>
-          </TouchableOpacity>
-
-
-          {/* My Tasks */}
-          <TouchableOpacity
-            style={styles.opBtnWrapper}
-            onPress={() => router.push("/tasks")}
-          >
-            <LinearGradient
-              colors={["#2563eb", "#1d4ed8"]}
-              style={styles.opBtn}
-            >
-              <ClipboardCheck size={24} color="#fff" />
-            </LinearGradient>
-            <Text style={[styles.opBtnText, { color: colors.text }]}>{t('actionPlan').toUpperCase()}</Text>
-          </TouchableOpacity>
-
-          {/* Apply Leave */}
-          <TouchableOpacity
-            style={styles.opBtnWrapper}
-            onPress={() => router.push("/leaves")}
-          >
-            <LinearGradient
-              colors={["#059669", "#047857"]}
-              style={styles.opBtn}
-            >
-              <Calendar size={24} color="#fff" />
-            </LinearGradient>
-            <Text style={[styles.opBtnText, { color: colors.text }]}>{t('applyLeave')}</Text>
-          </TouchableOpacity>
-
-          {/* Add Meeting */}
-          <TouchableOpacity
-            style={styles.opBtnWrapper}
-            onPress={() => router.push("/meetings")}
-          >
-            <LinearGradient
-              colors={["#7c3aed", "#6d28d9"]}
-              style={styles.opBtn}
-            >
-              <UserPlus size={24} color="#fff" />
-            </LinearGradient>
-            <Text style={[styles.opBtnText, { color: colors.text }]}>{t('addMeeting')}</Text>
-          </TouchableOpacity>
-
-          {/* Add Expense */}
-          <TouchableOpacity
-            style={styles.opBtnWrapper}
-            onPress={() => router.push("/expenses")}
-          >
-            <LinearGradient
-              colors={["#ea580c", "#c2410c"]}
-              style={styles.opBtn}
-            >
-              <Wallet size={24} color="#fff" />
-            </LinearGradient>
-            <Text style={[styles.opBtnText, { color: colors.text }]}>{t('addExpense')}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* 5. Recent Meetings */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('recentMeetings')}</Text>
-          <TouchableOpacity onPress={() => router.push("/meetings")}>
-            <Text style={styles.viewAllText}>{t('viewAll')}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {recentMeetings.length === 0 ? (
-          <Surface style={[styles.meetingCard, { justifyContent: 'center', paddingVertical: 24, backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
-            <Text style={{ fontSize: 12, color: colors.subText, textAlign: 'center', width: '100%' }}>No meetings logged yet.</Text>
-          </Surface>
-        ) : (
-          recentMeetings.slice(0, 3).map((meeting) => (
-            <Surface key={meeting._id || meeting.id} style={[styles.meetingCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
-              <View style={styles.meetingAvatar}>
-                <Text style={styles.meetingAvatarText}>
-                  {meeting.clientName?.charAt(0).toUpperCase() || "C"}
-                </Text>
+            <Surface style={[styles.officeTaskInputCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={2}>
+              <View style={styles.officeInputHeader}>
+                <ClipboardCheck size={20} color="#0a3d3c" style={{marginRight: 8}}/>
+                <Text style={[styles.officeInputTitle, { color: colors.text }]}>What are you working on today?</Text>
               </View>
-              <View style={styles.meetingInfo}>
-                <Text style={[styles.meetingAgentName, { color: colors.text }]}>{meeting.clientName}</Text>
-                <Text style={[styles.meetingAgentSub, { color: colors.subText }]}>
-                  {meeting.meetingNotes ? meeting.meetingNotes.substring(0, 32) + "..." : "No visit feedback notes logged"}
-                </Text>
-              </View>
-              <View
-                style={[
-                  styles.meetingBadge,
-                  meeting.status === "completed" && { backgroundColor: "rgba(16, 185, 129, 0.15)" },
-                  meeting.status === "follow-up" && { backgroundColor: "rgba(59, 130, 246, 0.15)" },
-                ]}
+              <TextInput
+                style={[styles.officeTextInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.background }]}
+                placeholder="E.g. Preparing weekly HR report..."
+                placeholderTextColor={colors.subText}
+                value={quickTaskTitle}
+                onChangeText={setQuickTaskTitle}
+                multiline
+              />
+              <TouchableOpacity
+                style={[styles.officeSubmitBtn, quickTaskTitle.trim() === '' && {opacity: 0.6}]}
+                onPress={handleQuickTaskSubmit}
+                disabled={quickTaskSubmitting || quickTaskTitle.trim() === ''}
               >
-                <Text
-                  style={[
-                    styles.meetingBadgeText,
-                    meeting.status === "completed" && { color: "#10b981" },
-                    meeting.status === "follow-up" && { color: "#2563eb" },
-                  ]}
+                <LinearGradient
+                   colors={['#0a3d3c', '#062828']}
+                   style={styles.officeSubmitGradient}
                 >
-                  {meeting.status?.toUpperCase() || "PENDING"}
-                </Text>
-              </View>
+                  {quickTaskSubmitting ? (
+                     <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Text style={styles.officeSubmitText}>Submit Task</Text>
+                      <ChevronRight size={16} color="#fff" style={{marginLeft: 6}}/>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
             </Surface>
-          ))
-        )}
 
-        {/* 6. Recent Expenses */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('recentExpenses')}</Text>
-          <TouchableOpacity onPress={() => router.push("/(employee)/expenses")}>
-            <Text style={styles.viewAllText}>{t('viewAll')}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.expenseList}>
-          {recentExpenses.length === 0 ? (
-            <Surface style={[styles.expenseCard, { justifyContent: 'center', paddingVertical: 24, backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
-              <Text style={{ fontSize: 12, color: colors.subText, textAlign: 'center', width: '100%' }}>No expenses claimed yet.</Text>
-            </Surface>
-          ) : (
-            recentExpenses.slice(0, 3).map((expense) => (
-              <Surface key={expense._id || expense.id} style={[styles.expenseCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
-                <View style={styles.expenseLeft}>
-                  <View style={[styles.expenseIconBox, expense.status === "approved" && { backgroundColor: "rgba(16, 185, 129, 0.12)" }]}>
-                    <Wallet
-                      size={18}
-                      color={expense.status === "approved" ? "#10b981" : "#f59e0b"}
-                    />
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 10 }]}>My Recent Tasks</Text>
+              <TouchableOpacity onPress={() => router.push("/tasks")}>
+                <Text style={styles.viewAllText}>{t('viewAll')}</Text>
+              </TouchableOpacity>
+            </View>
+            {recentTasks.length === 0 ? (
+              <Surface style={[styles.expenseCard, { justifyContent: 'center', paddingVertical: 24, backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
+                <Text style={{ fontSize: 12, color: colors.subText, textAlign: 'center', width: '100%' }}>No tasks submitted yet.</Text>
+              </Surface>
+            ) : (
+              recentTasks.slice(0, 5).map(task => {
+                const isCompleted = task.status === 'completed';
+                return (
+                <Surface key={task._id || task.id} style={[styles.officeTaskItem, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
+                  <View style={styles.officeTaskLeft}>
+                    <View style={[styles.officeTaskIconBadge, isCompleted ? {backgroundColor: 'rgba(16, 185, 129, 0.1)'} : {backgroundColor: 'rgba(59, 130, 246, 0.1)'}]}>
+                       {isCompleted ? <CheckCircle size={18} color="#10b981" /> : <Calendar size={18} color="#3b82f6" />}
+                    </View>
+                    <View style={styles.officeTaskContent}>
+                      <Text style={[styles.officeTaskTitle, { color: colors.text }, isCompleted && {textDecorationLine: 'line-through', color: colors.subText}]} numberOfLines={2}>
+                        {task.title}
+                      </Text>
+                      <Text style={[styles.officeTaskDate, { color: colors.subText }]}>
+                        {new Date(task.createdAt || task.dueDate).toLocaleDateString()}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={styles.expenseInfo}>
-                    <Text style={[styles.expenseName, { color: colors.text }]}>
-                      {expense.category ? expense.category.toUpperCase() : "ALLOWANCE"}
-                    </Text>
-                    <Text style={[styles.expenseDate, { color: colors.subText }]}>
-                      {expense.date ? new Date(expense.date).toLocaleDateString('en-GB') : "Today"}
+                  <View style={[styles.officeTaskStatus, isCompleted ? {backgroundColor: 'rgba(16, 185, 129, 0.15)'} : {backgroundColor: 'rgba(245, 158, 11, 0.15)'}]}>
+                    <Text style={[styles.officeTaskStatusText, isCompleted ? {color: '#10b981'} : {color: '#f59e0b'}]}>
+                      {task.status?.toUpperCase() || 'PENDING'}
                     </Text>
                   </View>
+                </Surface>
+              )})
+            )}
+          </>
+        ) : (
+          <>
+            {/* 3. KPI Grid (2x2) */}
+            <View style={styles.kpiGrid}>
+              {/* Box 1: Distance & Rate */}
+              <Surface style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
+                <View style={styles.kpiHeader}>
+                  <Text style={[styles.kpiTitle, { color: colors.subText }]}>{t('distanceToday')}</Text>
+                  <Navigation size={18} color="#00b4d8" />
                 </View>
-                <View style={styles.expenseRight}>
-                  <Text style={[styles.expenseValue, { color: colors.text }]}>₹{expense.amount}</Text>
+                <Text style={[styles.kpiValue, { color: colors.text }]}>
+                  {stats?.distanceToday || "0.00"} km
+                </Text>
+              </Surface>
+
+              {/* Box 2: Meetings */}
+              <Surface style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
+                <View style={styles.kpiHeader}>
+                  <Text style={[styles.kpiTitle, { color: colors.subText }]}>{t('meetings')}</Text>
+                  <Users size={18} color="#a855f7" />
+                </View>
+                <Text style={[styles.kpiValue, { color: colors.text }]}>{stats?.meetingCount || 0}</Text>
+              </Surface>
+
+              {/* Box 3: Total Distance */}
+              <Surface style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
+                <View style={styles.kpiHeader}>
+                  <Text style={[styles.kpiTitle, { color: colors.subText }]}>TOTAL DISTANCE</Text>
+                  <Navigation size={18} color="#00b4d8" />
+                </View>
+                <Text style={[styles.kpiValue, { color: colors.text }]}>{stats?.totalDistanceAllDates || "0.00"} km</Text>
+              </Surface>
+
+              {/* Box 4: Travel Rate */}
+              <Surface style={[styles.kpiCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
+                <View style={styles.kpiHeader}>
+                  <Text style={[styles.kpiTitle, { color: colors.subText }]}>TRAVEL RATE</Text>
+                  <Wallet size={18} color="#f59e0b" />
+                </View>
+                <Text style={[styles.kpiValue, { color: colors.text }]}>₹{stats?.travelRate || 0}/km</Text>
+              </Surface>
+            </View>
+
+            {/* 4. Quick Operations */}
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('quickOperations')}</Text>
+            <View style={styles.operationsGrid}>
+              {/* Start/Stop Tracking */}
+               <TouchableOpacity
+                style={styles.opBtnWrapper}
+                onPress={() => router.push("/tracking")}
+              >
+                <LinearGradient
+                  colors={["#075555ff", "#044d6eff"]}
+                  style={styles.opBtn}
+                >
+                  <Play size={24} color="#fff" />
+                </LinearGradient>
+                <Text style={[styles.opBtnText, { color: colors.text }]}>{t('tracking')}</Text>
+              </TouchableOpacity>
+
+
+              {/* My Tasks */}
+              <TouchableOpacity
+                style={styles.opBtnWrapper}
+                onPress={() => router.push("/tasks")}
+              >
+                <LinearGradient
+                  colors={["#2563eb", "#1d4ed8"]}
+                  style={styles.opBtn}
+                >
+                  <ClipboardCheck size={24} color="#fff" />
+                </LinearGradient>
+                <Text style={[styles.opBtnText, { color: colors.text }]}>{t('actionPlan').toUpperCase()}</Text>
+              </TouchableOpacity>
+
+              {/* Apply Leave */}
+              <TouchableOpacity
+                style={styles.opBtnWrapper}
+                onPress={() => router.push("/leaves")}
+              >
+                <LinearGradient
+                  colors={["#059669", "#047857"]}
+                  style={styles.opBtn}
+                >
+                  <Calendar size={24} color="#fff" />
+                </LinearGradient>
+                <Text style={[styles.opBtnText, { color: colors.text }]}>{t('applyLeave')}</Text>
+              </TouchableOpacity>
+
+              {/* Add Meeting */}
+              <TouchableOpacity
+                style={styles.opBtnWrapper}
+                onPress={() => router.push("/meetings")}
+              >
+                <LinearGradient
+                  colors={["#7c3aed", "#6d28d9"]}
+                  style={styles.opBtn}
+                >
+                  <UserPlus size={24} color="#fff" />
+                </LinearGradient>
+                <Text style={[styles.opBtnText, { color: colors.text }]}>{t('addMeeting')}</Text>
+              </TouchableOpacity>
+
+              {/* Add Expense */}
+              <TouchableOpacity
+                style={styles.opBtnWrapper}
+                onPress={() => router.push("/expenses")}
+              >
+                <LinearGradient
+                  colors={["#ea580c", "#c2410c"]}
+                  style={styles.opBtn}
+                >
+                  <Wallet size={24} color="#fff" />
+                </LinearGradient>
+                <Text style={[styles.opBtnText, { color: colors.text }]}>{t('addExpense')}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 5. Recent Meetings */}
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('recentMeetings')}</Text>
+              <TouchableOpacity onPress={() => router.push("/meetings")}>
+                <Text style={styles.viewAllText}>{t('viewAll')}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {recentMeetings.length === 0 ? (
+              <Surface style={[styles.meetingCard, { justifyContent: 'center', paddingVertical: 24, backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
+                <Text style={{ fontSize: 12, color: colors.subText, textAlign: 'center', width: '100%' }}>No meetings logged yet.</Text>
+              </Surface>
+            ) : (
+              recentMeetings.slice(0, 3).map((meeting) => (
+                <Surface key={meeting._id || meeting.id} style={[styles.meetingCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
+                  <View style={styles.meetingAvatar}>
+                    <Text style={styles.meetingAvatarText}>
+                      {meeting.clientName?.charAt(0).toUpperCase() || "C"}
+                    </Text>
+                  </View>
+                  <View style={styles.meetingInfo}>
+                    <Text style={[styles.meetingAgentName, { color: colors.text }]}>{meeting.clientName}</Text>
+                    <Text style={[styles.meetingAgentSub, { color: colors.subText }]}>
+                      {meeting.meetingNotes ? meeting.meetingNotes.substring(0, 32) + "..." : "No visit feedback notes logged"}
+                    </Text>
+                  </View>
                   <View
                     style={[
-                      styles.approvedBadge,
-                      expense.status === "pending" && { backgroundColor: "rgba(245, 158, 11, 0.15)" },
-                      expense.status === "rejected" && { backgroundColor: "rgba(239, 68, 68, 0.15)" },
+                      styles.meetingBadge,
+                      meeting.status === "completed" && { backgroundColor: "rgba(16, 185, 129, 0.15)" },
+                      meeting.status === "follow-up" && { backgroundColor: "rgba(59, 130, 246, 0.15)" },
                     ]}
                   >
                     <Text
                       style={[
-                        styles.approvedBadgeText,
-                        expense.status === "pending" && { color: "#f59e0b" },
-                        expense.status === "rejected" && { color: "#ef4444" },
+                        styles.meetingBadgeText,
+                        meeting.status === "completed" && { color: "#10b981" },
+                        meeting.status === "follow-up" && { color: "#2563eb" },
                       ]}
                     >
-                      {expense.status?.toUpperCase() || "PENDING"}
+                      {meeting.status?.toUpperCase() || "PENDING"}
                     </Text>
                   </View>
-                </View>
-              </Surface>
-            ))
-          )}
-        </View>
+                </Surface>
+              ))
+            )}
+
+            {/* 6. Recent Expenses */}
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('recentExpenses')}</Text>
+              <TouchableOpacity onPress={() => router.push("/(employee)/expenses")}>
+                <Text style={styles.viewAllText}>{t('viewAll')}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.expenseList}>
+              {recentExpenses.length === 0 ? (
+                <Surface style={[styles.expenseCard, { justifyContent: 'center', paddingVertical: 24, backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
+                  <Text style={{ fontSize: 12, color: colors.subText, textAlign: 'center', width: '100%' }}>No expenses claimed yet.</Text>
+                </Surface>
+              ) : (
+                recentExpenses.slice(0, 3).map((expense) => (
+                  <Surface key={expense._id || expense.id} style={[styles.expenseCard, { backgroundColor: colors.surface, borderColor: colors.border }]} elevation={1}>
+                    <View style={styles.expenseLeft}>
+                      <View style={[styles.expenseIconBox, expense.status === "approved" && { backgroundColor: "rgba(16, 185, 129, 0.12)" }]}>
+                        <Wallet
+                          size={18}
+                          color={expense.status === "approved" ? "#10b981" : "#f59e0b"}
+                        />
+                      </View>
+                      <View style={styles.expenseInfo}>
+                        <Text style={[styles.expenseName, { color: colors.text }]}>
+                          {expense.category ? expense.category.toUpperCase() : "ALLOWANCE"}
+                        </Text>
+                        <Text style={[styles.expenseDate, { color: colors.subText }]}>
+                          {expense.date ? new Date(expense.date).toLocaleDateString('en-GB') : "Today"}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.expenseRight}>
+                      <Text style={[styles.expenseValue, { color: colors.text }]}>₹{expense.amount}</Text>
+                      <View
+                        style={[
+                          styles.approvedBadge,
+                          expense.status === "pending" && { backgroundColor: "rgba(245, 158, 11, 0.15)" },
+                          expense.status === "rejected" && { backgroundColor: "rgba(239, 68, 68, 0.15)" },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.approvedBadgeText,
+                            expense.status === "pending" && { color: "#f59e0b" },
+                            expense.status === "rejected" && { color: "#ef4444" },
+                          ]}
+                        >
+                          {expense.status?.toUpperCase() || "PENDING"}
+                        </Text>
+                      </View>
+                    </View>
+                  </Surface>
+                ))
+              )}
+            </View>
+          </>
+        )}
       </ScrollView>
 
       {/* 7. Notifications Modal */}
@@ -724,6 +866,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f8fafc", // Very clean premium light background
   },
+  TextInput: {
+    borderWidth: 1,
+  },
   headerBar: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -853,6 +998,120 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "rgba(255, 255, 255, 0.15)",
     paddingTop: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1e293b",
+    paddingBottom: 24,
+  },
+  menuThemeText: {
+    color: "#94a3b8",
+    fontSize: 10,
+    fontWeight: "bold",
+    letterSpacing: 1.2,
+  },
+  menuThemeToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#1e293b",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  menuThemeToggleText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "bold",
+    marginLeft: 6,
+  },
+  officeTaskInputCard: {
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    marginBottom: 28,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  officeInputHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  officeInputTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  officeTextInput: {
+    borderWidth: 1.5,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 14,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    marginBottom: 16,
+  },
+  officeSubmitBtn: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  officeSubmitGradient: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  officeSubmitText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  officeTaskItem: {
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    marginBottom: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: "#000",
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  officeTaskLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    paddingRight: 10,
+  },
+  officeTaskIconBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  officeTaskContent: {
+    flex: 1,
+  },
+  officeTaskTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  officeTaskDate: {
+    fontSize: 11,
+  },
+  officeTaskStatus: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  officeTaskStatusText: {
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   statusPill: {
     flexDirection: "row",

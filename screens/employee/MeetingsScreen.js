@@ -13,8 +13,9 @@ import {
 } from 'react-native';
 import { Text, Surface } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Plus, User, Phone, MapPin, ClipboardList, Check, Calendar, ArrowRight, X, Pencil } from 'lucide-react-native';
-import { meetingApi } from '../../services/api';
+import { Plus, User, Phone, MapPin, ClipboardList, Check, Calendar, ArrowRight, X, Pencil, Camera } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { meetingApi, uploadAPI } from '../../services/api';
 
 export default function MeetingsScreen() {
   const [meetings, setMeetings] = useState([]);
@@ -29,6 +30,7 @@ export default function MeetingsScreen() {
   const [meetingAddress, setMeetingAddress] = useState('');
   const [status, setStatus] = useState('scheduled'); // 'scheduled' (Pending), 'completed', 'follow-up'
   const [meetingNotes, setMeetingNotes] = useState('');
+  const [selfieImage, setSelfieImage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [fetchingLocation, setFetchingLocation] = useState(false);
 
@@ -108,7 +110,32 @@ export default function MeetingsScreen() {
     setMeetingAddress('');
     setStatus('scheduled');
     setMeetingNotes('');
+    setSelfieImage(null);
     setModalVisible(true);
+  };
+
+  const handleCaptureSelfie = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert('Permission Denied', 'Camera permission is required to log a meeting.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [3, 4],
+        quality: 0.7,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setSelfieImage(result.assets[0]);
+      }
+    } catch (error) {
+      console.log('Error capturing selfie:', error);
+      Alert.alert('Error', 'Failed to capture selfie.');
+    }
   };
 
   const handleEditMeeting = (item) => {
@@ -118,12 +145,18 @@ export default function MeetingsScreen() {
     setMeetingAddress(item.meetingAddress || '');
     setStatus(item.status || 'scheduled');
     setMeetingNotes(item.meetingNotes || '');
+    setSelfieImage(null); // Optional: Could fetch existing selfie if needed, but null for new edits
     setModalVisible(true);
   };
 
   const handleSaveMeeting = async () => {
     if (!clientName.trim() || !mobileNumber.trim() || !meetingAddress.trim()) {
       Alert.alert('Required Fields', 'Please complete Client Name, Mobile, and Address.');
+      return;
+    }
+
+    if (!editingMeeting && !selfieImage) {
+      Alert.alert('Selfie Required', 'Please capture a selfie to log this meeting.');
       return;
     }
 
@@ -145,12 +178,34 @@ export default function MeetingsScreen() {
 
     try {
       setSubmitting(true);
+
+      let uploadedSelfieUrl = null;
+      if (selfieImage) {
+        const formData = new FormData();
+        formData.append('file', {
+          uri: selfieImage.uri,
+          type: 'image/jpeg',
+          name: `meeting_selfie_${Date.now()}.jpg`
+        });
+        formData.append('folder', '/crm-tracker/meetings');
+        
+        const uploadRes = await uploadAPI.uploadImageFormData(formData);
+        if (uploadRes.data && uploadRes.data.success) {
+          uploadedSelfieUrl = uploadRes.data.url;
+        } else {
+          Alert.alert('Upload Failed', 'Failed to upload selfie. Please try again.');
+          setSubmitting(false);
+          return;
+        }
+      }
+
       const data = {
         clientName,
         mobileNumber,
         meetingAddress,
         status,
         meetingNotes,
+        ...(uploadedSelfieUrl && { selfieUrl: uploadedSelfieUrl })
       };
 
       let res;
@@ -169,6 +224,7 @@ export default function MeetingsScreen() {
         setMeetingAddress('');
         setStatus('scheduled');
         setMeetingNotes('');
+        setSelfieImage(null);
         setEditingMeeting(null);
         fetchMeetings();
       }
@@ -447,6 +503,28 @@ export default function MeetingsScreen() {
                   placeholderTextColor="#94a3b8"
                 />
               </View>
+
+              {/* Selfie Capture Box */}
+              {!editingMeeting && (
+                <>
+                  <Text style={styles.inputLabel}>Meeting Selfie *</Text>
+                  <View style={styles.selfieContainer}>
+                    {selfieImage ? (
+                      <View style={styles.selfieImageWrapper}>
+                        <Text style={{ fontSize: 12, color: '#10b981', marginBottom: 6, fontWeight: 'bold' }}>✓ Selfie Captured</Text>
+                        <TouchableOpacity onPress={() => setSelfieImage(null)} style={styles.retakeBtn}>
+                          <Text style={styles.retakeBtnText}>Retake Selfie</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity style={styles.selfieUploadBox} onPress={handleCaptureSelfie}>
+                        <Camera size={24} color="#1d4ed8" />
+                        <Text style={styles.selfieBoxText}>Take a Selfie</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </>
+              )}
 
               {/* Submit Button */}
               {submitting ? (
@@ -760,6 +838,48 @@ const styles = StyleSheet.create({
   editCardBtnText: {
     color: '#1d4ed8',
     fontSize: 10,
+    fontWeight: 'bold',
+  },
+  selfieContainer: {
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  selfieUploadBox: {
+    height: 80,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  selfieBoxText: {
+    fontSize: 13,
+    color: '#1d4ed8',
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  selfieImageWrapper: {
+    backgroundColor: '#eff6ff',
+    padding: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  retakeBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 6,
+  },
+  retakeBtnText: {
+    fontSize: 11,
+    color: '#64748b',
     fontWeight: 'bold',
   },
 });

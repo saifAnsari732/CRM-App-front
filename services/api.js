@@ -6,7 +6,9 @@ export const setUnauthorizedCallback = (callback) => {
   unauthorizedCallback = callback;
 };
 
-export const BASE_URL = 'https://kisanteamweb.it.com/api';
+// export const BASE_URL = 'https://kisanteamweb.it.com/api'; // MilesWeb Production
+export const BASE_URL = 'https://crm-app-xh1t.onrender.com/api'; // ✅ Render Production Server
+// export const BASE_URL = 'http://192.168.0.107:5000/api'; // Local Testing
 
 
 export const getAvatarUrl = (avatar) => {
@@ -18,14 +20,14 @@ export const getAvatarUrl = (avatar) => {
     return clean;
   }
   
-  const baseUrlWithoutApi = 'https://kisanteamweb.it.com'; // Production URL
+  const baseUrlWithoutApi = BASE_URL.replace('/api', '');
   if (clean.startsWith('/')) {
     return `${baseUrlWithoutApi}${clean}`;
   }
   return `${baseUrlWithoutApi}/${clean}`;
 };
 
-// export const BASE_URL = 'https://kisanteamweb.it.com/api'; // Production URL (already set above)
+// export const BASE_URL = 'https://kisanteamweb.it.com/api'; // MilesWeb (alternative)
 
 console.log('Using Active API Base URL:', BASE_URL);
 
@@ -178,6 +180,11 @@ export const notificationAPI = {
 export const uploadAPI = {
   getAuth: () => API.get('/upload/auth'),
   uploadImage: (data) => API.post('/upload/image', data),
+  uploadImageFormData: (formData) => API.post('/upload/image-formdata', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  }),
 };
 
 // ─── Leaves ───────────────────────────────────────────────────────────────
@@ -226,8 +233,8 @@ export const authApi = {
 };
 
 export const trackingApi = {
-  startTracking: (sessionId, startTime, lat, lng, startAddress = '') => {
-    return trackingAPI.start({ sessionId, startTime, lat, lng, startAddress });
+  startTracking: (sessionId, startTime, lat, lng, startAddress = '', selfieUrl = '') => {
+    return trackingAPI.start({ sessionId, startTime, lat, lng, startAddress, selfieUrl });
   },
   updateLocation: (sessionId, coordinates, totalDistance = 0) => {
     return trackingAPI.update({ sessionId, coordinates, totalDistance });

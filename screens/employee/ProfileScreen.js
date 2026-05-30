@@ -98,10 +98,14 @@ export default function ProfileScreen() {
 
         setUploading(true);
 
-        const uploadRes = await uploadAPI.uploadImage({
-          file: `data:image/jpeg;base64,${selectedAsset.base64}`,
-          fileName: filename,
+        const formData = new FormData();
+        formData.append('file', {
+          uri: selectedAsset.uri,
+          type: 'image/jpeg',
+          name: filename
         });
+
+        const uploadRes = await uploadAPI.uploadImageFormData(formData);
 
         if (uploadRes.data && uploadRes.data.success) {
           const imageUrl = uploadRes.data.url;

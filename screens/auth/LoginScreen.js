@@ -10,10 +10,12 @@ import {
 } from 'lucide-react-native';
 import { useAuth } from '../../context/AuthContext';
 import { authApi, BASE_URL } from '../../services/api';
+import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
-export default function LoginScreen({ navigation }) {
+export default function LoginScreen() {
+  const router = useRouter();
   const { login } = useAuth();
   
   React.useEffect(() => {
@@ -164,7 +166,7 @@ export default function LoginScreen({ navigation }) {
             {/* Register Proxy Link */}
             <View style={styles.registerContainer}>
               <Text style={styles.registerText}>Don't have an account? </Text>
-              <TouchableOpacity onPress={() => navigation.navigate('register')}>
+              <TouchableOpacity onPress={() => router.push('/register')}>
                 <Text style={styles.registerLink}>Register</Text>
               </TouchableOpacity>
             </View>

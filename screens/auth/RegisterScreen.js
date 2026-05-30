@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   StyleSheet, View, TouchableOpacity, ScrollView, 
-  KeyboardAvoidingView, Platform, Dimensions, ActivityIndicator 
+  KeyboardAvoidingView, Platform, Dimensions, ActivityIndicator, Alert 
 } from 'react-native';
 import { Text, TextInput, Surface } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,10 +10,12 @@ import {
   ShieldCheck, Lock, EyeOff 
 } from 'lucide-react-native';
 import { authApi } from '../../services/api';
+import { useRouter } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
-export default function RegisterScreen({ navigation }) {
+export default function RegisterScreen() {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [fullName, setFullName] = useState('');
   const [employeeId, setEmployeeId] = useState('');
@@ -49,7 +51,7 @@ export default function RegisterScreen({ navigation }) {
         Alert.alert(
           'Registration Pending',
           'Your profile registration request has been successfully queued for approval.',
-          [{ text: 'Proceed', onPress: () => navigation.navigate('login') }]
+          [{ text: 'Proceed', onPress: () => router.push('/login') }]
         );
       }
     } catch (err) {
@@ -57,7 +59,7 @@ export default function RegisterScreen({ navigation }) {
       Alert.alert(
         'Onboarding Step 1 Completed',
         'Profile details successfully registered. Proceed to default sign in.',
-        [{ text: 'Proceed', onPress: () => navigation.navigate('login') }]
+        [{ text: 'Proceed', onPress: () => router.push('/login') }]
       );
     } finally {
       setLoading(false);
@@ -135,7 +137,20 @@ export default function RegisterScreen({ navigation }) {
             {/* Field 3: Department Selector */}
             <Surface style={styles.inputCard} elevation={1}>
               <Text style={styles.inputLabel}>DEPARTMENT</Text>
-              <TouchableOpacity style={styles.dropdownInnerRow} onPress={() => alert('Opening departments list...')}>
+              <TouchableOpacity 
+                style={styles.dropdownInnerRow} 
+                onPress={() => {
+                  Alert.alert(
+                    "Select Department",
+                    "Choose your designated department:",
+                    [
+                      { text: "Field Operations", onPress: () => setDepartment("Field Operations") },
+                      { text: "Office", onPress: () => setDepartment("Office") },
+                      { text: "Cancel", style: "cancel" }
+                    ]
+                  );
+                }}
+              >
                 <Text style={styles.dropdownValue}>{department}</Text>
                 <ChevronDown size={18} color="#64748b" />
               </TouchableOpacity>
@@ -196,7 +211,7 @@ export default function RegisterScreen({ navigation }) {
           {/* Lower Proxy Nav */}
           <View style={styles.loginProxyRow}>
             <Text style={styles.loginProxyText}>Already have an account? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('login')}>
+            <TouchableOpacity onPress={() => router.push('/login')}>
               <Text style={styles.loginProxyLink}>Login to Portal</Text>
             </TouchableOpacity>
           </View>

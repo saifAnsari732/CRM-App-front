@@ -1,33 +1,77 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Vibration, Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { Vibration, AppState, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 import socketService from '../services/socket';
 import { useAuth } from './AuthContext';
+import { notificationAPI } from '../services/api';
 
-// Configure how the OS should handle notifications when the app is in the foreground
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+// ─── Detect Expo Go vs Production APK ────────────────────────────────────────
+// expo-notifications causes errors in Expo Go (SDK 53+).
+// We only load it in production APK builds where it works fully.
+const isExpoGo = Constants.appOwnership === 'expo';
+
+let Notifications = null;
+let nativeNotificationsAvailable = false;
+
+if (!isExpoGo) {
+  // Production APK — load expo-notifications safely
+  try {
+    Notifications = require('expo-notifications');
+    if (Notifications?.setNotificationHandler) {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+        }),
+      });
+      nativeNotificationsAvailable = true;
+      console.log('🔔 expo-notifications: Native OS alerts enabled (Production APK).');
+    }
+  } catch (e) {
+    console.log('⚠️ expo-notifications failed to load:', e.message);
+  }
+} else {
+  console.log('📱 Expo Go detected — using in-app banner + polling mode (no native OS alerts).');
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 const NotificationContext = createContext({});
+
+const POLL_INTERVAL = 8000; // 8 seconds
 
 export const NotificationProvider = ({ children }) => {
   const { user } = useAuth();
   const router = useRouter();
   const [activeNotification, setActiveNotification] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
+  const lastNotificationIdRef = useRef(null);
+  const pollingTimerRef = useRef(null);
+  const appStateRef = useRef(AppState.currentState);
+  const responseListenerRef = useRef(null);
+
+  // ── Map notification type → route ─────────────────────────────────────────
+  const getRouteForType = (type) => {
+    switch (type) {
+      case 'task':    return '/(employee)/tasks';
+      case 'leave':   return '/(employee)/leaves';
+      case 'expense': return '/(employee)/expenses';
+      case 'lead':    return '/(employee)/leads';
+      default:        return '/(employee)/dashboard';
+    }
+  };
+
+  // ── Configure Android notification channel (Production APK only) ──────────
   useEffect(() => {
-    // 1. Request native permissions and configure Android high-importance channel
+    if (!user || !nativeNotificationsAvailable) return;
+
     async function configureNativeNotifications() {
       try {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        if (existingStatus !== 'granted') {
+        const { status: existing } = await Notifications.getPermissionsAsync();
+        let finalStatus = existing;
+        if (existing !== 'granted') {
           const { status } = await Notifications.requestPermissionsAsync();
           finalStatus = status;
         }
@@ -35,123 +79,177 @@ export const NotificationProvider = ({ children }) => {
           console.log('⚠️ Native Notifications: Permission denied.');
           return;
         }
-
         if (Platform.OS === 'android') {
           await Notifications.setNotificationChannelAsync('crm-alerts', {
             name: 'CRM Activity Alerts',
-            importance: Notifications.AndroidImportance.MAX, // Wakes up screen / shows heads-up banner
+            importance: Notifications.AndroidImportance.MAX, // wakes screen
             vibrationPattern: [0, 250, 250, 250],
             lightColor: '#0a3d3c',
             bypassDnd: true,
           });
+          console.log('🔔 Android channel "crm-alerts" configured.');
         }
       } catch (err) {
-        console.error('Failed to configure native notifications:', err);
+        console.log('⚠️ Native notification setup error:', err.message);
       }
     }
 
-    if (user) {
-      configureNativeNotifications();
-    }
+    configureNativeNotifications();
   }, [user]);
 
-  // 🔔 Helper to trigger both OS-level system alert and in-app banner
-  const triggerSystemNotification = async ({ title, message, type, route, data }) => {
-    // Trigger subtle local vibration
-    try {
-      Vibration.vibrate(100);
-    } catch {}
+  // ── Core trigger: in-app banner + OS native alert (APK) ───────────────────
+  const triggerSystemNotification = useCallback(async ({ title, message, type, route, data }) => {
+    try { Vibration.vibrate([0, 80, 60, 80]); } catch {}
 
-    // 1. Show in-app banner
+    // ✅ Always show in-app sliding banner (Expo Go + APK both)
     setActiveNotification({
       title,
       message,
       type: type || 'default',
+      route: route || getRouteForType(type),
       data: data || {},
     });
 
-    // 2. Trigger OS-Level Native System Notification (shows when screen is off, locked, or backgrounded!)
-    try {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: title,
-          body: message,
-          data: { route: route || '/(employee)/dashboard' },
-          sound: true,
-          priority: Notifications.AndroidNotificationPriority.MAX,
-        },
-        trigger: null, // instant trigger
-      });
-    } catch (err) {
-      console.log('Error scheduling native notification:', err);
+    // ✅ OS-level lock screen alert — Production APK only
+    if (nativeNotificationsAvailable) {
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title,
+            body: message,
+            data: { route: route || '/(employee)/dashboard' },
+            sound: true,
+            priority: Notifications.AndroidNotificationPriority?.MAX,
+            ...(Platform.OS === 'android' && { channelId: 'crm-alerts' }),
+          },
+          trigger: null, // instant
+        });
+      } catch (err) {
+        console.log('⚠️ scheduleNotificationAsync error:', err.message);
+      }
     }
-  };
 
+    console.log(`🔔 Notification triggered: [${type}] ${title}`);
+  }, []);
+
+  // ── Polling fallback: detect new notifications every 8s ───────────────────
+  const pollForNewNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await notificationAPI.getAll();
+      const notifications = res?.data?.notifications || [];
+      if (!notifications.length) return;
+
+      const unread = notifications.filter(n => !n.isRead).length;
+      setUnreadCount(unread);
+
+      const latest = notifications[0];
+      if (!latest) return;
+
+      // First poll — set baseline, don't show banner
+      if (lastNotificationIdRef.current === null) {
+        lastNotificationIdRef.current = latest._id;
+        console.log('🔔 Polling baseline set:', latest._id);
+        return;
+      }
+
+      // New notification detected!
+      if (latest._id !== lastNotificationIdRef.current && !latest.isRead) {
+        console.log('🔔 Polling: New notification!', latest.title);
+        lastNotificationIdRef.current = latest._id;
+        triggerSystemNotification({
+          title: latest.title,
+          message: latest.message,
+          type: latest.type,
+          route: getRouteForType(latest.type),
+          data: latest.data || {},
+        });
+      }
+    } catch {
+      // Silent fail
+    }
+  }, [user, triggerSystemNotification]);
+
+  // ── Start/stop polling ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!user) {
       setActiveNotification(null);
+      setUnreadCount(0);
+      lastNotificationIdRef.current = null;
+      clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
       return;
     }
 
-    // 📡 Listener for unified real-time notifications
-    const handleSocketNotification = (notification) => {
-      console.log('📡 Real-time notification received: ', notification);
-      let route = '/(employee)/dashboard';
-      if (notification.type === 'task') route = '/(employee)/tasks';
-      if (notification.type === 'leave') route = '/(employee)/leaves';
-      if (notification.type === 'expense') route = '/(employee)/expenses';
-      if (notification.type === 'lead') route = '/(employee)/leads';
+    pollForNewNotifications(); // immediate first poll
 
+    pollingTimerRef.current = setInterval(pollForNewNotifications, POLL_INTERVAL);
+    console.log(`🔔 Notification polling started every ${POLL_INTERVAL / 1000}s`);
+
+    // Poll instantly when app comes to foreground
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
+        pollForNewNotifications();
+      }
+      appStateRef.current = nextState;
+    });
+
+    return () => {
+      clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+      appStateSub.remove();
+    };
+  }, [user, pollForNewNotifications]);
+
+  // ── Socket listeners (real-time bonus) ────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+
+    const handleSocketNotification = (notification) => {
+      console.log('📡 Socket notification:', notification.title);
+      if (notification._id) lastNotificationIdRef.current = notification._id;
       triggerSystemNotification({
         title: notification.title,
         message: notification.message,
         type: notification.type,
-        route,
+        route: getRouteForType(notification.type),
         data: notification.data,
       });
     };
 
-    // 📡 Fallback listener for 'new_task' event (Legacy Backends)
     const handleNewTask = ({ task }) => {
-      console.log('📡 Legacy new_task event received: ', task);
       triggerSystemNotification({
         title: 'New Task Assigned',
-        message: `You have been assigned a new task: ${task?.title || ''}`,
+        message: `You have been assigned: ${task?.title || 'a new task'}`,
         type: 'task',
         route: '/(employee)/tasks',
-        data: { taskId: task?._id }
+        data: { taskId: task?._id },
       });
     };
 
-    // 📡 Fallback listener for 'leave_status_update' event (Legacy Backends)
     const handleLeaveUpdate = ({ leaveId, status }) => {
-      console.log('📡 Legacy leave_status_update event received: ', { leaveId, status });
-      const formattedStatus = status ? status.charAt(0).toUpperCase() + status.slice(1) : '';
+      const s = status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Updated';
       triggerSystemNotification({
-        title: `Leave ${formattedStatus}`,
+        title: `Leave ${s}`,
         message: `Your leave request has been ${status || 'updated'}.`,
         type: 'leave',
         route: '/(employee)/leaves',
-        data: { leaveId }
+        data: { leaveId },
       });
     };
 
-    // 📡 Fallback listener for 'expense_status_update' event (Legacy Backends)
     const handleExpenseUpdate = ({ expenseId, status }) => {
-      console.log('📡 Legacy expense_status_update event received: ', { expenseId, status });
-      const formattedStatus = status ? status.charAt(0).toUpperCase() + status.slice(1) : '';
+      const s = status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Updated';
       triggerSystemNotification({
-        title: `Expense Claim ${formattedStatus}`,
+        title: `Expense Claim ${s}`,
         message: `Your expense claim has been ${status || 'updated'}.`,
         type: 'expense',
         route: '/(employee)/expenses',
-        data: { expenseId }
+        data: { expenseId },
       });
     };
 
-    // 📡 Fallback listener for 'account_approved' event (Legacy Backends)
     const handleAccountApproved = ({ message }) => {
-      console.log('📡 Legacy account_approved event received: ', message);
       triggerSystemNotification({
         title: 'Account Approved',
         message: message || 'Your account has been approved!',
@@ -160,44 +258,50 @@ export const NotificationProvider = ({ children }) => {
       });
     };
 
-    // Register all socket event listeners
-    socketService.on('notification', handleSocketNotification);
-    socketService.on('new_task', handleNewTask);
-    socketService.on('leave_status_update', handleLeaveUpdate);
+    socketService.on('notification',          handleSocketNotification);
+    socketService.on('new_task',              handleNewTask);
+    socketService.on('leave_status_update',   handleLeaveUpdate);
     socketService.on('expense_status_update', handleExpenseUpdate);
-    socketService.on('account_approved', handleAccountApproved);
+    socketService.on('account_approved',      handleAccountApproved);
 
-    // 🧭 Listen to native system notification tap events (Redirection when screen is off/backgrounded!)
-    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
-      const route = response.notification.request.content.data?.route;
-      if (route) {
-        console.log(`🧭 Native Notification Tap: Redirecting to ${route}`);
-        setTimeout(() => {
-          try {
-            router.push(route);
-          } catch (err) {
-            console.error('Failed to redirect from native tap:', err);
+    // Native tap → redirect (Production APK only)
+    if (nativeNotificationsAvailable && Notifications?.addNotificationResponseReceivedListener) {
+      try {
+        responseListenerRef.current = Notifications.addNotificationResponseReceivedListener(response => {
+          const route = response.notification.request.content.data?.route;
+          if (route) {
+            setTimeout(() => {
+              try { router.push(route); } catch {}
+            }, 300);
           }
-        }, 300);
-      }
-    });
+        });
+      } catch {}
+    }
 
     return () => {
-      socketService.off('notification', handleSocketNotification);
-      socketService.off('new_task', handleNewTask);
-      socketService.off('leave_status_update', handleLeaveUpdate);
+      socketService.off('notification',          handleSocketNotification);
+      socketService.off('new_task',              handleNewTask);
+      socketService.off('leave_status_update',   handleLeaveUpdate);
       socketService.off('expense_status_update', handleExpenseUpdate);
-      socketService.off('account_approved', handleAccountApproved);
-      responseListener.remove();
+      socketService.off('account_approved',      handleAccountApproved);
+      if (responseListenerRef.current) {
+        try { responseListenerRef.current.remove(); } catch {}
+        responseListenerRef.current = null;
+      }
     };
-  }, [user]);
+  }, [user, triggerSystemNotification]);
 
-  const dismissNotification = () => {
-    setActiveNotification(null);
-  };
+  const dismissNotification = useCallback(() => setActiveNotification(null), []);
 
   return (
-    <NotificationContext.Provider value={{ activeNotification, dismissNotification, showLocalNotification: triggerSystemNotification }}>
+    <NotificationContext.Provider
+      value={{
+        activeNotification,
+        dismissNotification,
+        unreadCount,
+        showLocalNotification: triggerSystemNotification,
+      }}
+    >
       {children}
     </NotificationContext.Provider>
   );

@@ -83,12 +83,12 @@ export default function AnimatedSplash({ onFinish }) {
           <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
             <View style={styles.logoWrapper}>
               <Image 
-                source={require('../assets/logo.png')} 
+                source={require('../assets/logo.jpeg')} 
                 style={styles.logoImage} 
               />
             </View>
             
-            <Text style={styles.brandTitle}>FieldTrack Pro</Text>
+            <Text style={styles.brandTitle}>kisanTeam</Text>
             <Text style={styles.brandSubtitle}>Shift Tracker & Location Intelligence</Text>
           </Animated.View>
         </View>

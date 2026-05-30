@@ -118,12 +118,15 @@ export default function ExpensesScreen() {
       if (daReceiptImage && daReceiptImage.base64) {
         setUploadingImage(true);
         try {
-          const base64Data = `data:image/jpeg;base64,${daReceiptImage.base64}`;
-          const uploadRes = await uploadAPI.uploadImage({
-            file: base64Data,
-            fileName: `da_receipt_${Date.now()}.jpg`,
-            folder: '/crm-tracker/receipts'
+          const formData = new FormData();
+          formData.append('file', {
+            uri: daReceiptImage.uri,
+            type: 'image/jpeg',
+            name: `da_receipt_${Date.now()}.jpg`
           });
+          formData.append('folder', '/crm-tracker/receipts');
+
+          const uploadRes = await uploadAPI.uploadImageFormData(formData);
           if (uploadRes.data && uploadRes.data.success) {
             receiptUrl = uploadRes.data.url;
           }
@@ -177,12 +180,15 @@ export default function ExpensesScreen() {
       if (receiptImage && receiptImage.base64) {
         setUploadingImage(true);
         try {
-          const base64Data = `data:image/jpeg;base64,${receiptImage.base64}`;
-          const uploadRes = await uploadAPI.uploadImage({
-            file: base64Data,
-            fileName: `receipt_${Date.now()}.jpg`,
-            folder: '/crm-tracker/receipts'
+          const formData = new FormData();
+          formData.append('file', {
+            uri: receiptImage.uri,
+            type: 'image/jpeg',
+            name: `receipt_${Date.now()}.jpg`
           });
+          formData.append('folder', '/crm-tracker/receipts');
+
+          const uploadRes = await uploadAPI.uploadImageFormData(formData);
           
           if (uploadRes.data && uploadRes.data.success) {
             receiptUrls.push(uploadRes.data.url);
