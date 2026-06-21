@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android AAB
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    name: Build APK
+    name: Build AAB
     runs-on: ubuntu-latest
     
     steps:
@@ -31,14 +31,14 @@ jobs:
       - name: Run Expo Prebuild
         run: npx expo prebuild --platform android --clean
 
-      - name: Build Android APK
+      - name: Build Android AAB
         working-directory: android
-        run: ./gradlew assembleRelease
+        run: ./gradlew bundleRelease
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
 
-      - name: Upload APK
+      - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
-          name: app-release.apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: app-release.aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
