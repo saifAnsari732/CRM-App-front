@@ -1,14 +1,15 @@
 import axios from 'axios';
 import { storage } from './storage';
 
+
 let unauthorizedCallback = null;
 export const setUnauthorizedCallback = (callback) => {
   unauthorizedCallback = callback;
 };
 
-// export const BASE_URL = 'https://kisanteamweb.it.com/api'; // MilesWeb Production
-export const BASE_URL = 'https://crm-app-xh1t.onrender.com/api'; // ✅ Render Production Server
-// export const BASE_URL = 'http://192.168.0.107:5000/api'; // Local Testing
+export const BASE_URL = 'https://kisanteamweb.it.com/api'; // MilesWeb Production
+// export const BASE_URL = 'https://crm-app-xh1t.onrender.com/api'; // ✅ Render Production Server
+// export const BASE_URL = 'http://192.168.0.115:5000/api';  // 
 
 
 export const getAvatarUrl = (avatar) => {
@@ -36,10 +37,12 @@ const API = axios.create({
   timeout: 15000,
 });
 
-let refreshTokenPromise = null;
+let refreshTokenPromise = null;              
 
 /**
+ 
  * Request interceptor: Attach token dynamically from mobile storage
+
  */
 API.interceptors.request.use(async (config) => {
   try {
@@ -180,11 +183,37 @@ export const notificationAPI = {
 export const uploadAPI = {
   getAuth: () => API.get('/upload/auth'),
   uploadImage: (data) => API.post('/upload/image', data),
-  uploadImageFormData: (formData) => API.post('/upload/image-formdata', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-  }),
+  uploadImageFormData: (formData) => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        console.log('API call: POST /upload/image via XMLHttpRequest');
+        const token = await storage.getItem('userToken') || await storage.getItem('token');
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${BASE_URL}/upload/image`);
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        
+        xhr.onload = () => {
+          console.log('XHR Response:', xhr.response);
+          try {
+            const data = JSON.parse(xhr.response);
+            resolve({ data });
+          } catch (e) {
+            resolve({ data: { success: false, message: 'Invalid JSON response from server' } });
+          }
+        };
+        
+        xhr.onerror = () => {
+          console.error('XHR Network Error');
+          resolve({ data: { success: false, message: 'Network Error via XHR' } });
+        };
+        
+        xhr.send(formData);
+      } catch (err) {
+        console.error('XHR Setup Error:', err);
+        resolve({ data: { success: false, message: err.message || 'Setup Error' } });
+      }
+    });
+  },
 };
 
 // ─── Leaves ───────────────────────────────────────────────────────────────

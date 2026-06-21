@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as Location from 'expo-location';
-import { Platform, PermissionsAndroid } from 'react-native';
+import { Platform, PermissionsAndroid, DeviceEventEmitter, Alert } from 'react-native';
 import { storage } from '../services/storage';
 import { trackingApi } from '../services/api';
 import socketService from '../services/socket';
@@ -29,6 +29,13 @@ export default function useLocationTracker() {
   // Sync active tracking state from secure storage upon hook initialization
   useEffect(() => {
     checkActiveSession();
+    
+    // Listen for global tracking state changes (syncs across multiple hook instances)
+    const subscription = DeviceEventEmitter.addListener('TrackingStateChanged', (newState) => {
+      setIsTracking(newState);
+    });
+    
+    return () => subscription.remove();
   }, []);
 
   const checkActiveSession = async () => {
@@ -104,11 +111,34 @@ export default function useLocationTracker() {
       }
 
       // 2. Background Location Permission (Requirement #2 - triggered after foreground)
-      const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-      if (backgroundStatus !== 'granted') {
-        setPermissionStatus('foreground_only');
-        alert('Background Location permission is required for active tracking when minimized.');
-        return false;
+      const { status: currentBgStatus } = await Location.getBackgroundPermissionsAsync();
+      
+      if (currentBgStatus !== 'granted') {
+        // Prominent Disclosure before requesting background location (Google Play Policy Requirement)
+        const userAgreed = await new Promise((resolve) => {
+          Alert.alert(
+            "Background Location Required",
+            "This app collects location data to enable shift tracking and calculate distance travelled even when the app is closed or not in use.",
+            [
+              { text: "Decline", onPress: () => resolve(false), style: "cancel" },
+              { text: "Agree", onPress: () => resolve(true) }
+            ],
+            { cancelable: false }
+          );
+        });
+
+        if (!userAgreed) {
+          setPermissionStatus('foreground_only');
+          alert('Background Location permission is required for active tracking when minimized.');
+          return false;
+        }
+
+        const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
+        if (backgroundStatus !== 'granted') {
+          setPermissionStatus('foreground_only');
+          alert('Background Location permission is required for active tracking when minimized.');
+          return false;
+        }
       }
 
       setPermissionStatus('granted');
@@ -237,6 +267,7 @@ export default function useLocationTracker() {
       }
 
       setIsTracking(true);
+      DeviceEventEmitter.emit('TrackingStateChanged', true);
       console.log('📍 useLocationTracker: Background tracking started successfully!');
 
       /* === NATIVE PUSH NOTIFICATIONS FOR APK === */
@@ -337,6 +368,7 @@ export default function useLocationTracker() {
       await storage.removeItem('last_recorded_location');
 
       setIsTracking(false);
+      DeviceEventEmitter.emit('TrackingStateChanged', false);
       console.log('📍 useLocationTracker: Background tracking stopped. Distance:', totalDistance, 'km');
 
       /* === NATIVE PUSH NOTIFICATIONS FOR APK === */
@@ -363,6 +395,7 @@ export default function useLocationTracker() {
         await Location.stopLocationUpdatesAsync(BACKGROUND_TRACKING_TASK);
       } catch {}
       setIsTracking(false);
+      DeviceEventEmitter.emit('TrackingStateChanged', false);
 
       return { success: false, error: error.response?.data?.message || error.message };
     } finally {

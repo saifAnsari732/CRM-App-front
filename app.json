@@ -3,11 +3,10 @@
     "name": "kisanTeam",
     "slug": "mobile-app",
     "scheme": "mobile-app",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/logo.jpeg",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/logo.jpeg",
       "resizeMode": "contain",
@@ -21,6 +20,12 @@
       }
     },
     "android": {
+      "versionCode": 14,
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyCgmGEomqsMzK3Fcx5Q4eVj8yWLkBBrbbA"
+        }
+      },
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo.jpeg",
         "backgroundColor": "#ffffff"
@@ -41,7 +46,8 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.RECEIVE_BOOT_COMPLETED"
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -80,7 +86,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "e2aca0ed-c556-41ba-b772-43fbfc0bf4d2"
+        "projectId": "51919d79-bd08-4843-885f-0fb69e0a9882"
       }
     }
   }

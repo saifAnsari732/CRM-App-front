@@ -54,13 +54,14 @@ TaskManager.defineTask(BACKGROUND_TRACKING_TASK, async ({ data: { locations }, e
           lastLocation = JSON.parse(lastLocationStr);
           const distance = getDistanceFromLatLonInMeters(lastLocation.lat, lastLocation.lng, latitude, longitude);
           
-          // Relaxed drift filter:
-          // 1. If accuracy is poor (>35m), require at least a 35m jump to filter out cell tower leaps.
-          // 2. If accuracy is good (<=35m), require a standard 15m jump (industry standard for active walking/driving).
-          const requiredThreshold = accuracy > 35 ? 35 : 15;
+          // Strict drift filter to prevent fake movement inside buildings
+          // If accuracy is poor, we need a much larger jump to consider it real movement
+          const requiredThreshold = accuracy > 20 ? 40 : 20;
           
-          if (distance < requiredThreshold) {
-            // console.log(`📍 BackgroundTask: Ignored drift (${distance.toFixed(1)}m < ${requiredThreshold}m threshold)`);
+          // Also check speed: if speed is less than 0.5 m/s (1.8 km/h), they are likely not moving.
+          // (Speed can be 0 or -1 if the OS doesn't provide it, so we combine it with distance)
+          if (distance < requiredThreshold || (speed >= 0 && speed < 0.5 && distance < 50)) {
+            // Ignored drift
             return;
           }
         } catch (parseErr) {

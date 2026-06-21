@@ -38,7 +38,9 @@ import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "../../context/AuthContext";
 import * as ImagePicker from "expo-image-picker";
-import { dashboardApi, meetingApi, expenseApi, taskApi, leadAPI, getAvatarUrl, uploadAPI } from "../../services/api";
+import * as FileSystem from "expo-file-system";
+import { dashboardApi, meetingApi, expenseApi, taskApi, leadAPI, getAvatarUrl, uploadAPI, BASE_URL } from "../../services/api";
+import { storage } from "../../services/storage";
 import { useSettings } from "../../context/SettingsContext";
 
 const { width } = Dimensions.get("window");
@@ -46,7 +48,7 @@ const { width } = Dimensions.get("window");
 export default function EmployeeDashboardScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const { isTracking, loading, startTracking, stopTracking } =
+  const { isTracking, loading, startTracking, stopTracking, requestPermissions } =
     useLocationTracker();
   const [currentDate, setCurrentDate] = useState("");
   const [showMenu, setShowMenu] = useState(false);
@@ -229,6 +231,12 @@ export default function EmployeeDashboardScreen() {
       );
     } else {
       try {
+        const hasLocationPermission = await requestPermissions();
+        if (!hasLocationPermission) {
+          Alert.alert("Permission Denied", "Location permissions are required to start your shift.");
+          return;
+        }
+
         const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
         if (!permissionResult.granted) {
           Alert.alert('Permission Denied', 'Camera permission is required to punch in.');
@@ -236,7 +244,7 @@ export default function EmployeeDashboardScreen() {
         }
 
         const result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          mediaTypes: ['images'],
           allowsEditing: true,
           aspect: [3, 4],
           quality: 0.7,
@@ -248,21 +256,28 @@ export default function EmployeeDashboardScreen() {
 
         const selfieImage = result.assets[0];
         const formData = new FormData();
-        formData.append('file', {
+        formData.append('image', {
           uri: selfieImage.uri,
           type: 'image/jpeg',
           name: `punchin_selfie_${Date.now()}.jpg`
         });
         formData.append('folder', '/crm-tracker/attendance');
         
-        // We upload it to store the real image per user request
+        console.log('--- UPLOAD DEBUG START ---');
+        console.log('Using Axios for upload to bypass PHP Proxy Timeout and FileSystem issues...');
+        
         const uploadRes = await uploadAPI.uploadImageFormData(formData);
         
+        console.log('Upload Response Received:', uploadRes);
+        console.log('--- UPLOAD DEBUG END ---');
+        
         let selfieUrl = '';
-        if (uploadRes.data && uploadRes.data.success) {
+        if (uploadRes && uploadRes.data && uploadRes.data.success) {
            selfieUrl = uploadRes.data.url;
         } else {
-           Alert.alert("Upload Failed", "Failed to upload selfie, but proceeding...");
+           const errMsg = (uploadRes && uploadRes.data) ? JSON.stringify(uploadRes.data) : "No data";
+           Alert.alert("Upload Failed", `Could not upload selfie: ${errMsg}`);
+           return; // Block Punch In if upload fails
         }
 
         const res = await startTracking(selfieUrl);
@@ -280,7 +295,7 @@ export default function EmployeeDashboardScreen() {
         }
       } catch (err) {
         console.log('Error during punch in:', err);
-        Alert.alert("Error", "Something went wrong during Punch-In.");
+        Alert.alert("Error", "Error during Punch-In: " + (err.message || JSON.stringify(err)));
       }
     }
   };

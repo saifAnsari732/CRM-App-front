@@ -12,6 +12,8 @@ import '../services/locationTask';
 
 SplashScreen.preventAutoHideAsync();
 
+export { ErrorBoundary } from 'expo-router';
+
 function InitialLayout() {
   const { user, isLoading } = useAuth();
   const segments = useSegments();
