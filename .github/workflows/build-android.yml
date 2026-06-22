@@ -32,7 +32,8 @@ jobs:
         run: |
           set -e
           export CI=1
-          yes | npx expo prebuild --platform android --clean
+          export EXPO_OFFLINE=1
+          npx expo prebuild --platform android --clean --no-install
 
       - name: Decode Release Keystore
         run: |
