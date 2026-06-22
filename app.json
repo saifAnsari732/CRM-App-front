@@ -19,7 +19,7 @@
         "ITSAppUsesNonExemptEncryption": false
       }
     },   
-      "versionCode": 14,
+      "versionCode": 13,
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyCgmGEomqsMzK3Fcx5Q4eVj8yWLkBBrbbA"
