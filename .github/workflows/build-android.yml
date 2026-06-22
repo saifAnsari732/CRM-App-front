@@ -25,15 +25,16 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Decode Release Keystore
-        run: |
-          echo "${{ secrets.RELEASE_KEYSTORE }}" | base64 -d > android/app/release.keystore
-
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
       - name: Run Expo Prebuild
         run: npx expo prebuild --platform android --clean
+
+      - name: Decode Release Keystore
+        run: |
+          mkdir -p android/app
+          echo "${{ secrets.RELEASE_KEYSTORE }}" | base64 -d > android/app/release.keystore
 
       - name: Build Android AAB
         working-directory: android
