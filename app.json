@@ -18,8 +18,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
-    },
-    "android": {
+    },   
       "versionCode": 14,
       "config": {
         "googleMaps": {
