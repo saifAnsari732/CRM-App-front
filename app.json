@@ -20,7 +20,7 @@
       }
     },
     "android": {
-      "versionCode": 14,
+      "versionCode": 15,
       "package": "com.kisanteam.crm",
       "config": {
         "googleMaps": {
