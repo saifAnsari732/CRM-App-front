@@ -35,14 +35,9 @@ jobs:
           export EXPO_OFFLINE=1
           npx expo prebuild --platform android --clean --no-install
 
-      - name: Decode Release Keystore
-        run: |
-          mkdir -p android/app
-          echo "${{ secrets.RELEASE_KEYSTORE }}" | base64 -d > android/app/release.keystore
-
       - name: Build Android AAB
         working-directory: android
-        run: ./gradlew bundleRelease
+        run: ./gradlew bundleRelease -Pandroid.injected.signing.store.file=$PWD/app/release.keystore -Pandroid.injected.signing.store.password=7dc43c7d13c2fce97dad4e3aee328dcf -Pandroid.injected.signing.key.alias=d9b9872af962a07364e46ed23b05a360 -Pandroid.injected.signing.key.password=23d2670e47bf2fcea8e2b8d3469073af
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
 
