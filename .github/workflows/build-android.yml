@@ -37,7 +37,7 @@ jobs:
 
       - name: Build Android AAB
         working-directory: android
-        run: ./gradlew bundleRelease -Pandroid.injected.signing.store.file=$PWD/app/release.keystore -Pandroid.injected.signing.store.password=7dc43c7d13c2fce97dad4e3aee328dcf -Pandroid.injected.signing.key.alias=d9b9872af962a07364e46ed23b05a360 -Pandroid.injected.signing.key.password=23d2670e47bf2fcea8e2b8d3469073af
+        run: ./gradlew bundleRelease -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/release.keystore -Pandroid.injected.signing.store.password=7dc43c7d13c2fce97dad4e3aee328dcf -Pandroid.injected.signing.key.alias=d9b9872af962a07364e46ed23b05a360 -Pandroid.injected.signing.key.password=23d2670e47bf2fcea8e2b8d3469073af
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
 

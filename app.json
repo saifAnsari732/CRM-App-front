@@ -20,14 +20,13 @@
       }
     },
     "android": {
-      "versionCode": 15,
+      "versionCode": 16,
       "package": "com.kisanteam.crm",
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyCgmGEomqsMzK3Fcx5Q4eVj8yWLkBBrbbA"
         }
       },
-    
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo.jpeg",
         "backgroundColor": "#ffffff"
@@ -81,16 +80,16 @@
           "android": {
             "usesCleartextTraffic": true
           }
-        } 
+        }
       ],
       "expo-font"
     ],
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "51919d79-bd08-4843-885f-0fb69e0a9882"
+        "projectId": "e2aca0ed-c556-41ba-b772-43fbfc0bf4d2"
       }
-    }
+    },
+    "owner": "easylearn"
   }
 }
-
