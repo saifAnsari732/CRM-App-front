@@ -32,7 +32,6 @@ jobs:
         run: |
           set -e
           export CI=1
-          export EXPO_OFFLINE=1
           npx expo prebuild --platform android --clean --no-install
 
       - name: Build Android AAB
