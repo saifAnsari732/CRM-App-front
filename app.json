@@ -20,7 +20,7 @@
       }
     },
     "android": {
-      "versionCode": 16,
+      "versionCode": 17,
       "package": "com.kisanteam.crm",
       "config": {
         "googleMaps": {
@@ -78,6 +78,8 @@
         "expo-build-properties",
         {
           "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
             "usesCleartextTraffic": true
           }
         }
