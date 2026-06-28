@@ -1,109 +1,152 @@
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View, Animated, Dimensions, Platform, Image } from 'react-native';
-import { Text, Avatar } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Navigation } from 'lucide-react-native';
 
 const { width, height } = Dimensions.get('window');
 
 export default function AnimatedSplash({ onFinish }) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.85)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const logoScale = useRef(new Animated.Value(0.4)).current;
+  const logoOpacity = useRef(new Animated.Value(0)).current;
+  const titleTranslateY = useRef(new Animated.Value(20)).current;
+  const titleOpacity = useRef(new Animated.Value(0)).current;
+  const subtitleOpacity = useRef(new Animated.Value(0)).current;
+  const footerOpacity = useRef(new Animated.Value(0)).current;
+  const progressAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // 1. Initial rapid fade-in and scale-up (200ms)
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
+    // Staggered entrance animation for a premium feel
+    Animated.sequence([
+      Animated.delay(150),
+      // 1. Logo elegantly drops in and fades
+      Animated.parallel([
+        Animated.spring(logoScale, {
+          toValue: 1,
+          tension: 15,
+          friction: 5,
+          useNativeDriver: true,
+        }),
+        Animated.timing(logoOpacity, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        })
+      ]),
+      // 2. Title slides up and fades in
+      Animated.parallel([
+        Animated.timing(titleTranslateY, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.timing(titleOpacity, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        })
+      ]),
+      // 3. Subtitle fades in smoothly
+      Animated.timing(subtitleOpacity, {
         toValue: 1,
-        duration: 200,
+        duration: 400,
         useNativeDriver: true,
       }),
-      Animated.spring(scaleAnim, {
+      // 4. Footer fades in
+      Animated.timing(footerOpacity, {
         toValue: 1,
-        friction: 5,
-        tension: 40,
+        duration: 500,
         useNativeDriver: true,
       })
     ]).start();
 
-    // 2. Pulse indicator loop
+    // Indeterminate Progress Bar Animation
     Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.25,
-          duration: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: true,
-        })
-      ])
+      Animated.timing(progressAnim, {
+        toValue: 1,
+        duration: 1200,
+        useNativeDriver: true,
+      })
     ).start();
 
-    // 3. Elegant micro-splash: Keep for 1200ms, then trigger rapid 200ms fade-out
+    // Finish splash after 2.5 seconds and trigger exit transition
     const timer = setTimeout(() => {
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start(onFinish);
-    }, 1200);
+      // 1. Fade out texts and footer first
+      Animated.parallel([
+        Animated.timing(titleOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(subtitleOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(footerOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+      ]).start(() => {
+        // 2. Logo zooms in massively while fading out
+        Animated.parallel([
+          Animated.timing(logoScale, { 
+            toValue: 20, // Scales up to 20x size
+            duration: 400, 
+            useNativeDriver: true 
+          }),
+          Animated.timing(logoOpacity, { 
+            toValue: 0, 
+            duration: 400, // Fades out during the zoom
+            useNativeDriver: true 
+          }),
+        ]).start(onFinish);
+      });
+    }, 2500);
 
     return () => clearTimeout(timer);
   }, []);
 
   return (
-    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+    <View style={styles.container}>
       <LinearGradient
-        colors={['#0a3d3c', '#002626', '#001414']}
+        colors={['#020617', '#0f172a', '#064e3b']}
+        locations={[0, 0.4, 1]}
         style={styles.gradient}
       >
         <View style={styles.centerContainer}>
-          {/* Pulsing Radar Ring Backgrounds */}
-          <Animated.View 
-            style={[
-              styles.pulseCircle, 
-              { transform: [{ scale: pulseAnim }], opacity: 0.15 }
-            ]} 
-          />
-          <Animated.View 
-            style={[
-              styles.pulseCircle, 
-              { 
-                transform: [{ scale: Animated.multiply(pulseAnim, 0.7) }], 
-                opacity: 0.25 
-              }
-            ]} 
-          />
-
-          {/* Logo Brand Container */}
-          <Animated.View style={{ transform: [{ scale: scaleAnim }], alignItems: 'center' }}>
+          
+          {/* Logo with clean styling (Removed buggy android elevation/shadow) */}
+          <Animated.View style={{ opacity: logoOpacity, transform: [{ scale: logoScale }], zIndex: 2 }}>
             <View style={styles.logoWrapper}>
               <Image 
                 source={require('../assets/logo.jpeg')} 
                 style={styles.logoImage} 
               />
             </View>
-            
+          </Animated.View>
+          
+          {/* Brand Title */}
+          <Animated.View style={{ opacity: titleOpacity, transform: [{ translateY: titleTranslateY }] }}>
             <Text style={styles.brandTitle}>kisanTeam</Text>
+          </Animated.View>
+          
+          {/* Brand Subtitle */}
+          <Animated.View style={{ opacity: subtitleOpacity }}>
             <Text style={styles.brandSubtitle}>Shift Tracker & Location Intelligence</Text>
           </Animated.View>
         </View>
 
-        {/* Powered By Footer */}
-        <View style={styles.footer}>
+        {/* Footer with animated progress bar instead of dots */}
+        <Animated.View style={[styles.footer, { opacity: footerOpacity }]}>
           <Text style={styles.footerText}>SECURE OPERATIONAL SYNC</Text>
-          <View style={styles.indicatorContainer}>
-            <View style={styles.dot} />
-            <View style={[styles.dot, styles.dotActive]} />
-            <View style={styles.dot} />
+          <View style={styles.progressBarContainer}>
+            <Animated.View 
+              style={[
+                styles.progressBar, 
+                {
+                  transform: [{
+                    translateX: progressAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-60, 60]
+                    })
+                  }]
+                }
+              ]} 
+            />
           </View>
-        </View>
+        </Animated.View>
+
       </LinearGradient>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -111,6 +154,7 @@ const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 99999,
+    backgroundColor: '#020617', // Fallback
   },
   gradient: {
     flex: 1,
@@ -121,72 +165,64 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     flex: 1,
-  },
-  pulseCircle: {
-    position: 'absolute',
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    borderWidth: 2,
-    borderColor: '#14b8a6',
-    backgroundColor: 'transparent',
+    marginTop: -30, // Adjusts overall visual center
   },
   logoWrapper: {
-    shadowColor: '#14b8a6',
-    shadowOpacity: 0.4,
-    shadowRadius: 15,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
-    marginBottom: 20,
+    marginBottom: 25,
+    padding: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 65,
+    borderWidth: 1,
+    borderColor: 'rgba(20, 184, 166, 0.2)',
   },
   logoImage: {
     width: 105,
     height: 105,
     borderRadius: 52.5,
     resizeMode: 'cover',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    backgroundColor: '#fff', // Ensure logo stands out on dark gradient backings
+    backgroundColor: '#fff', 
   },
   brandTitle: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-    marginTop: 10,
+    color: '#ffffff',
+    fontSize: 34,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
   },
   brandSubtitle: {
-    color: '#a7f3d0',
+    color: '#94a3b8',
     fontSize: 13,
-    fontWeight: '500',
-    marginTop: 6,
-    opacity: 0.8,
-    letterSpacing: 0.5,
+    fontWeight: '600',
+    marginTop: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
   footer: {
     position: 'absolute',
     bottom: Platform.OS === 'ios' ? 60 : 40,
     alignItems: 'center',
+    width: '100%',
   },
   footerText: {
-    color: '#64748b',
-    fontSize: 10,
-    fontWeight: 'bold',
-    letterSpacing: 2,
+    color: '#475569',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 4,
+    marginBottom: 15,
   },
-  indicatorContainer: {
-    flexDirection: 'row',
-    marginTop: 12,
+  progressBarContainer: {
+    width: 60,
+    height: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 2,
+    overflow: 'hidden',
   },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#334155',
-    marginHorizontal: 4,
-  },
-  dotActive: {
-    backgroundColor: '#14b8a6',
-    width: 18,
+  progressBar: {
+    width: 20,
+    height: '100%',
+    backgroundColor: '#14b8a6', // Teal brand accent
+    borderRadius: 2,
   },
 });

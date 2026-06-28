@@ -208,26 +208,31 @@ export default function ActiveShiftMapScreen() {
               setSpeed('0');
             }
 
-            // Reverse geocode to get structural address
+            // Reverse geocode to get structural address (Skip on Web to avoid 429 Rate Limits / SDK 49 warnings)
             try {
-              const geocoded = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
-              if (geocoded && geocoded.length > 0) {
-                const res = geocoded[0];
-                const street = res.street || res.name || '';
-                const district = res.district || res.subregion || '';
-                const city = res.city || '';
-                const region = res.region || '';
-                const code = res.postalCode || '';
-                
-                const fullAddress = [street, district, city, region, code]
-                  .filter(part => part && part.length > 0)
-                  .join(', ');
-                  
-                console.log('📡 Mobile Tracker: [Current Address] ->', fullAddress || `[${lat.toFixed(6)}, ${lng.toFixed(6)}]`);
-                setAddress(fullAddress || `Location acquired: [${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
-              } else {
-                console.log('📡 Mobile Tracker: [Coordinates Acquired] ->', lat, lng);
+              if (Platform.OS === 'web') {
+                console.log('📡 Web Tracker: [Coordinates Acquired] ->', lat, lng);
                 setAddress(`Location acquired: [${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
+              } else {
+                const geocoded = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+                if (geocoded && geocoded.length > 0) {
+                  const res = geocoded[0];
+                  const street = res.street || res.name || '';
+                  const district = res.district || res.subregion || '';
+                  const city = res.city || '';
+                  const region = res.region || '';
+                  const code = res.postalCode || '';
+                  
+                  const fullAddress = [street, district, city, region, code]
+                    .filter(part => part && part.length > 0)
+                    .join(', ');
+                    
+                  console.log('📡 Tracker: [Current Address] ->', fullAddress || `[${lat.toFixed(6)}, ${lng.toFixed(6)}]`);
+                  setAddress(fullAddress || `Location acquired: [${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
+                } else {
+                  console.log('📡 Tracker: [Coordinates Acquired] ->', lat, lng);
+                  setAddress(`Location acquired: [${lat.toFixed(4)}, ${lng.toFixed(4)}]`);
+                }
               }
             } catch (geoErr) {
               console.log('📍 Tracking Screen: Reverse geocoding failed:', geoErr.message);

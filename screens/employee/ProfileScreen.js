@@ -99,11 +99,17 @@ export default function ProfileScreen() {
         setUploading(true);
 
         const formData = new FormData();
-        formData.append('file', {
-          uri: selectedAsset.uri,
-          type: 'image/jpeg',
-          name: filename
-        });
+        if (Platform.OS === 'web') {
+          const response = await fetch(selectedAsset.uri);
+          const blob = await response.blob();
+          formData.append('image', blob, filename);
+        } else {
+          formData.append('image', {
+            uri: selectedAsset.uri,
+            type: 'image/jpeg',
+            name: filename
+          });
+        }
 
         const uploadRes = await uploadAPI.uploadImageFormData(formData);
 

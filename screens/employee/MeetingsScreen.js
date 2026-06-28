@@ -182,11 +182,17 @@ export default function MeetingsScreen() {
       let uploadedSelfieUrl = null;
       if (selfieImage) {
         const formData = new FormData();
-        formData.append('file', {
-          uri: selfieImage.uri,
-          type: 'image/jpeg',
-          name: `meeting_selfie_${Date.now()}.jpg`
-        });
+        if (Platform.OS === 'web') {
+          const response = await fetch(selfieImage.uri);
+          const blob = await response.blob();
+          formData.append('image', blob, `meeting_selfie_${Date.now()}.jpg`);
+        } else {
+          formData.append('image', {
+            uri: selfieImage.uri,
+            type: 'image/jpeg',
+            name: `meeting_selfie_${Date.now()}.jpg`
+          });
+        }
         formData.append('folder', '/crm-tracker/meetings');
         
         const uploadRes = await uploadAPI.uploadImageFormData(formData);

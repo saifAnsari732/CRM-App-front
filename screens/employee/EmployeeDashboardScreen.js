@@ -12,6 +12,8 @@ import {
   Modal,
   Image,
   TextInput,
+  Animated,
+  Easing,
 } from "react-native";
 import { Text, Surface } from "react-native-paper";
 import {
@@ -85,6 +87,7 @@ export default function EmployeeDashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [quickTaskTitle, setQuickTaskTitle] = useState('');
   const [quickTaskSubmitting, setQuickTaskSubmitting] = useState(false);
+  const [isUploadingSelfie, setIsUploadingSelfie] = useState(false);
   
   const isOffice = user?.department?.toLowerCase() === 'office';
 
@@ -247,7 +250,7 @@ export default function EmployeeDashboardScreen() {
           mediaTypes: ['images'],
           allowsEditing: true,
           aspect: [3, 4],
-          quality: 0.7,
+          quality: 0.1, // Reduced to 0.1 to prevent PHP proxy timeout (upload fails on 0.7 if file > 3MB)
         });
 
         if (result.canceled || !result.assets || result.assets.length === 0) {
@@ -256,42 +259,58 @@ export default function EmployeeDashboardScreen() {
 
         const selfieImage = result.assets[0];
         const formData = new FormData();
-        formData.append('image', {
-          uri: selfieImage.uri,
-          type: 'image/jpeg',
-          name: `punchin_selfie_${Date.now()}.jpg`
-        });
+        if (Platform.OS === 'web') {
+          // On Web, always fetch the blob to ensure it's a valid Blob/File object that FormData accepts
+          const response = await fetch(selfieImage.uri);
+          const blob = await response.blob();
+          formData.append('file', blob, `punchin_selfie_${Date.now()}.jpg`);
+          formData.append('fileName', `punchin_selfie_${Date.now()}.jpg`);
+        } else {
+          // On Mobile, FormData expects an object with uri, type, and name
+          formData.append('file', {
+            uri: selfieImage.uri,
+            type: 'image/jpeg',
+            name: `punchin_selfie_${Date.now()}.jpg`
+          });
+          formData.append('fileName', `punchin_selfie_${Date.now()}.jpg`);
+        }
+        
         formData.append('folder', '/crm-tracker/attendance');
         
         console.log('--- UPLOAD DEBUG START ---');
-        console.log('Using Axios for upload to bypass PHP Proxy Timeout and FileSystem issues...');
+        console.log('Uploading directly to ImageKit to bypass PHP Proxy Timeout...');
         
-        const uploadRes = await uploadAPI.uploadImageFormData(formData);
-        
-        console.log('Upload Response Received:', uploadRes);
-        console.log('--- UPLOAD DEBUG END ---');
-        
-        let selfieUrl = '';
-        if (uploadRes && uploadRes.data && uploadRes.data.success) {
-           selfieUrl = uploadRes.data.url;
-        } else {
-           const errMsg = (uploadRes && uploadRes.data) ? JSON.stringify(uploadRes.data) : "No data";
-           Alert.alert("Upload Failed", `Could not upload selfie: ${errMsg}`);
-           return; // Block Punch In if upload fails
-        }
+        setIsUploadingSelfie(true);
+        try {
+          const uploadRes = await uploadAPI.uploadImageDirect(formData);
+          
+          console.log('Upload Response Received:', uploadRes);
+          console.log('--- UPLOAD DEBUG END ---');
+          
+          let selfieUrl = '';
+          if (uploadRes && uploadRes.data && uploadRes.data.success) {
+             selfieUrl = uploadRes.data.url;
+          } else {
+             const errMsg = (uploadRes && uploadRes.data) ? JSON.stringify(uploadRes.data) : "No data";
+             Alert.alert("Upload Failed", `Could not upload selfie: ${errMsg}`);
+             return; // Block Punch In if upload fails
+          }
 
-        const res = await startTracking(selfieUrl);
-        if (res.success) {
-          Alert.alert(
-            "Shift Started",
-            "Selfie captured. You are now ON DUTY. Background GPS tracking initialized.",
-          );
-          loadDashboardData();
-        } else {
-          Alert.alert(
-            "Failed to Start Shift",
-            res.error || "Check permission permissions and try again.",
-          );
+          const res = await startTracking(selfieUrl);
+          if (res.success) {
+            Alert.alert(
+              "Shift Started",
+              "Selfie captured. You are now ON DUTY. Background GPS tracking initialized.",
+            );
+            loadDashboardData();
+          } else {
+            Alert.alert(
+              "Failed to Start Shift",
+              res.error || "Check permission permissions and try again.",
+            );
+          }
+        } finally {
+          setIsUploadingSelfie(false);
         }
       } catch (err) {
         console.log('Error during punch in:', err);
@@ -871,9 +890,80 @@ export default function EmployeeDashboardScreen() {
           </Surface>
         </View>
       </Modal>
+
+      {/* Uploading Selfie Overlay */}
+      {isUploadingSelfie && <UploadingOverlay />}
     </View>
   );
 }
+
+// Custom Uploading Overlay Component
+const UploadingOverlay = () => {
+  const [spinValue] = useState(new Animated.Value(0));
+  const [pulseValue] = useState(new Animated.Value(1));
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.timing(spinValue, {
+        toValue: 1,
+        duration: 2000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseValue, {
+          toValue: 1.2,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseValue, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        })
+      ])
+    ).start();
+  }, []);
+
+  const spin = spinValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg']
+  });
+
+  return (
+    <Modal transparent={true} visible={true} animationType="fade">
+      <View style={styles.uploadOverlayContainer}>
+        <View style={styles.uploadBox}>
+          <Animated.View style={{ transform: [{ scale: pulseValue }] }}>
+            <View style={styles.uploadIconCircle}>
+              <Animated.View style={{ transform: [{ rotate: spin }] }}>
+                <RefreshCw size={36} color="#008080" />
+              </Animated.View>
+            </View>
+          </Animated.View>
+          
+          <Text style={styles.uploadingTitle}>Uploading Punch...</Text>
+          <Text style={styles.uploadingSub}>Please wait while your selfie is verified and location is fetched.</Text>
+          
+          <View style={styles.progressBarContainer}>
+            <Animated.View style={[
+              styles.progressBarFill, 
+              {
+                width: pulseValue.interpolate({
+                  inputRange: [1, 1.2],
+                  outputRange: ['60%', '100%']
+                })
+              }
+            ]} />
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 
 const styles = StyleSheet.create({
@@ -1592,6 +1682,58 @@ const styles = StyleSheet.create({
     marginTop: 4,
     paddingHorizontal: 20,
     lineHeight: 16,
+  },
+  uploadOverlayContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadBox: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 30,
+    width: '80%',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  uploadIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#e6f2f2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  uploadingTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#0f172a',
+    marginBottom: 8,
+  },
+  uploadingSub: {
+    fontSize: 13,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 18,
+  },
+  progressBarContainer: {
+    width: '100%',
+    height: 6,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#008080',
+    borderRadius: 3,
   },
   notificationItem: {
     backgroundColor: "#f8fafc",

@@ -3,7 +3,7 @@
     "name": "kisanTeam",
     "slug": "mobile-app",
     "scheme": "mobile-app",
-    "version": "1.0.4",
+    "version": "1.0.11",
     "orientation": "portrait",
     "icon": "./assets/logo.jpeg",
     "userInterfaceStyle": "light",
@@ -20,7 +20,7 @@
       }
     },
     "android": {
-      "versionCode": 20,
+      "versionCode": 27,
       "package": "com.kisanteam.crm",
       "config": {
         "googleMaps": {
@@ -80,6 +80,7 @@
           "android": {
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
+            "useLegacyPackaging": false,
             "usesCleartextTraffic": true,
             "enableProguardInReleaseBuilds": false,
             "enableShrinkResourcesInReleaseBuilds": false

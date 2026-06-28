@@ -271,14 +271,16 @@ export default function useLocationTracker() {
       console.log('📍 useLocationTracker: Background tracking started successfully!');
 
       /* === NATIVE PUSH NOTIFICATIONS FOR APK === */
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: "🟢 Shift Started (Punched In)",
-          body: "Your attendance has been logged and background tracking is active.",
-          sound: true,
-        },
-        trigger: null,
-      });
+      if (Platform.OS !== 'web') {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "🟢 Shift Started (Punched In)",
+            body: "Your attendance has been logged and background tracking is active.",
+            sound: true,
+          },
+          trigger: null,
+        });
+      }
       /* ==================================================== */
       
       return { success: true, session };
@@ -372,14 +374,16 @@ export default function useLocationTracker() {
       console.log('📍 useLocationTracker: Background tracking stopped. Distance:', totalDistance, 'km');
 
       /* === NATIVE PUSH NOTIFICATIONS FOR APK === */
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: "🔴 Shift Ended (Punched Out)",
-          body: `You have successfully clocked out. Distance logged: ${totalDistance.toFixed(2)} km.`,
-          sound: true,
-        },
-        trigger: null,
-      });
+      if (Platform.OS !== 'web') {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "🔴 Shift Ended (Punched Out)",
+            body: `You have successfully clocked out. Distance logged: ${totalDistance.toFixed(2)} km.`,
+            sound: true,
+          },
+          trigger: null,
+        });
+      }
       /* ==================================================== */
 
       return { success: true, totalDistance };

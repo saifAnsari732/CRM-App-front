@@ -8,7 +8,6 @@ export const setUnauthorizedCallback = (callback) => {
 };
 
 export const BASE_URL = 'https://kisanteamweb.it.com/api'; // MilesWeb Production
-// export const BASE_URL = 'https://crm-app-xh1t.onrender.com/api'; // ✅ Render Production Server
 // export const BASE_URL = 'http://192.168.0.115:5000/api';  // 
 
 
@@ -183,36 +182,55 @@ export const notificationAPI = {
 export const uploadAPI = {
   getAuth: () => API.get('/upload/auth'),
   uploadImage: (data) => API.post('/upload/image', data),
-  uploadImageFormData: (formData) => {
-    return new Promise(async (resolve, reject) => {
-      try {
-        console.log('API call: POST /upload/image via XMLHttpRequest');
-        const token = await storage.getItem('userToken') || await storage.getItem('token');
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', `${BASE_URL}/upload/image`);
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-        
-        xhr.onload = () => {
-          console.log('XHR Response:', xhr.response);
-          try {
-            const data = JSON.parse(xhr.response);
-            resolve({ data });
-          } catch (e) {
-            resolve({ data: { success: false, message: 'Invalid JSON response from server' } });
-          }
-        };
-        
-        xhr.onerror = () => {
-          console.error('XHR Network Error');
-          resolve({ data: { success: false, message: 'Network Error via XHR' } });
-        };
-        
-        xhr.send(formData);
-      } catch (err) {
-        console.error('XHR Setup Error:', err);
-        resolve({ data: { success: false, message: err.message || 'Setup Error' } });
+  uploadImageFormData: async (formData) => {
+    try {
+      console.log('API call: POST /upload/image via fetch');
+      const token = await storage.getItem('userToken') || await storage.getItem('token');
+      
+      const response = await fetch(`${BASE_URL}/upload/image`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      return { data };
+    } catch (err) {
+      console.error('Fetch Upload Error:', err);
+      return { data: { success: false, message: err.message || 'Network Error' } };
+    }
+  },
+  uploadImageDirect: async (formData) => {
+    try {
+      // 1. Get Auth params from our backend
+      const authRes = await API.get('/upload/auth');
+      if (!authRes.data.success) throw new Error('Failed to get upload auth');
+      const { signature, expire, token, publicKey } = authRes.data;
+
+      // 2. Append Auth params to the existing FormData
+      formData.append('publicKey', publicKey);
+      formData.append('signature', signature);
+      formData.append('expire', expire);
+      formData.append('token', token);
+
+      // 3. Upload directly to ImageKit bypassing our Node/PHP server
+      const response = await fetch('https://upload.imagekit.io/api/v1/files/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (data.fileId) {
+        return { data: { success: true, url: data.url, fileId: data.fileId, thumbnailUrl: data.thumbnailUrl } };
+      } else {
+        return { data: { success: false, message: data.message || 'ImageKit upload failed' } };
       }
-    });
+    } catch (err) {
+      console.error('Direct Upload Error:', err);
+      return { data: { success: false, message: err.message || 'Network Error' } };
+    }
   },
 };
 

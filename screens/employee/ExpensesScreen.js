@@ -119,11 +119,17 @@ export default function ExpensesScreen() {
         setUploadingImage(true);
         try {
           const formData = new FormData();
-          formData.append('file', {
-            uri: daReceiptImage.uri,
-            type: 'image/jpeg',
-            name: `da_receipt_${Date.now()}.jpg`
-          });
+          if (Platform.OS === 'web') {
+            const response = await fetch(daReceiptImage.uri);
+            const blob = await response.blob();
+            formData.append('image', blob, `da_receipt_${Date.now()}.jpg`);
+          } else {
+            formData.append('image', {
+              uri: daReceiptImage.uri,
+              type: 'image/jpeg',
+              name: `da_receipt_${Date.now()}.jpg`
+            });
+          }
           formData.append('folder', '/crm-tracker/receipts');
 
           const uploadRes = await uploadAPI.uploadImageFormData(formData);
@@ -181,11 +187,17 @@ export default function ExpensesScreen() {
         setUploadingImage(true);
         try {
           const formData = new FormData();
-          formData.append('file', {
-            uri: receiptImage.uri,
-            type: 'image/jpeg',
-            name: `receipt_${Date.now()}.jpg`
-          });
+          if (Platform.OS === 'web') {
+            const response = await fetch(receiptImage.uri);
+            const blob = await response.blob();
+            formData.append('image', blob, `receipt_${Date.now()}.jpg`);
+          } else {
+            formData.append('image', {
+              uri: receiptImage.uri,
+              type: 'image/jpeg',
+              name: `receipt_${Date.now()}.jpg`
+            });
+          }
           formData.append('folder', '/crm-tracker/receipts');
 
           const uploadRes = await uploadAPI.uploadImageFormData(formData);
