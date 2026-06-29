@@ -206,32 +206,45 @@ export default function EmployeeDashboardScreen() {
 
   const handleClockToggle = async () => {
     if (isTracking) {
-      Alert.alert(
-        "Confirm Punch Out",
-        "Are you sure you want to end your active operational tracking shift?",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Punch Out",
-            style: "destructive",
-            onPress: async () => {
-              const res = await stopTracking();
-              if (res.success) {
-                Alert.alert(
-                  "Shift Ended",
-                  `Punch out complete. Logged ${res.totalDistance?.toFixed(2) || 0} km traveled.`,
-                );
-                loadDashboardData();
-              } else {
-                Alert.alert(
-                  "Error",
-                  res.error || "Failed to stop tracking session.",
-                );
-              }
+      if (Platform.OS === 'web') {
+        const confirmed = window.confirm("Are you sure you want to end your active operational tracking shift? (Punch Out)");
+        if (confirmed) {
+          const res = await stopTracking();
+          if (res.success) {
+            alert(`Punch out complete. Logged ${res.totalDistance?.toFixed(2) || 0} km traveled.`);
+            loadDashboardData();
+          } else {
+            alert(res.error || "Failed to stop tracking session.");
+          }
+        }
+      } else {
+        Alert.alert(
+          "Confirm Punch Out",
+          "Are you sure you want to end your active operational tracking shift?",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Punch Out",
+              style: "destructive",
+              onPress: async () => {
+                const res = await stopTracking();
+                if (res.success) {
+                  Alert.alert(
+                    "Shift Ended",
+                    `Punch out complete. Logged ${res.totalDistance?.toFixed(2) || 0} km traveled.`,
+                  );
+                  loadDashboardData();
+                } else {
+                  Alert.alert(
+                    "Error",
+                    res.error || "Failed to stop tracking session.",
+                  );
+                }
+              },
             },
-          },
-        ],
-      );
+          ],
+        );
+      }
     } else {
       try {
         const hasLocationPermission = await requestPermissions();
